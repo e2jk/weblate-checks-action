@@ -173,14 +173,40 @@ languages from Weblate; pass `--languages en,fr,nl` to scan an explicit list
 instead. Run `python3 weblate_checks_to_sarif.py --help` for the full flag
 list — it mirrors the action's inputs one-for-one.
 
-## Tests
+## Development
+
+The shipped script (`weblate_checks_to_sarif.py`) itself has no dependencies
+beyond the Python standard library, as noted above — but working on this
+repo (linting, type-checking, security scanning, running tests) uses a
+handful of dev-only tools, kept separate in `requirements-dev.txt`:
 
 ```bash
-pip install pytest
-python3 -m pytest tests/ -q
+python -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+
+.venv/bin/ruff check .                                      # lint
+.venv/bin/ruff format .                                      # auto-format
+.venv/bin/mypy weblate_checks_to_sarif.py                    # type-check (strict mode)
+.venv/bin/bandit -c pyproject.toml -r weblate_checks_to_sarif.py -ll -i  # security scan
+.venv/bin/zizmor -q --persona=pedantic --offline .github/ action.yml     # workflow/action.yml lint
+.venv/bin/pip-audit -r requirements-dev.txt                  # dependency audit
+
+.venv/bin/python -m pytest tests/ --cov=. --cov-report=term-missing -q   # tests, with coverage
 ```
 
 Tests mock all network calls — no live Weblate instance is contacted.
+
+A `.githooks/pre-push` hook runs all of the above automatically before every
+push (plus [actionlint](https://github.com/rhysd/actionlint), installed
+separately — see `.github/workflows/ci.yml`). Enable it once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+[`AGENTS.md`](AGENTS.md) has the full architecture write-up and repo
+conventions — read it before making a change, whether you're a human or an
+AI coding agent.
 
 ## A note on versioning
 
