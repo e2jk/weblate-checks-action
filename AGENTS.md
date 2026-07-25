@@ -32,46 +32,15 @@ a commit message (Conventional Commits format, see "Conventions" below) and
 let the human run the commit themselves, even if a change is otherwise
 complete and verified.
 
-## Commands
+## Development
 
-```bash
-python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-
-.venv/bin/ruff check .                                     # lint
-.venv/bin/ruff format --check .                             # formatting (drop --check to fix)
-.venv/bin/mypy weblate_checks_to_sarif.py                   # type-check (strict mode)
-.venv/bin/bandit -c pyproject.toml -r weblate_checks_to_sarif.py -ll -i  # security scan
-.venv/bin/zizmor -q --persona=pedantic --offline .github/ action.yml     # workflow/action.yml lint
-.venv/bin/pip-audit -r requirements-dev.txt                 # dependency audit
-
-.venv/bin/python -m pytest tests/ --cov=. --cov-report=term-missing -q   # full suite w/ coverage
-.venv/bin/python -m pytest tests/test_weblate_checks_to_sarif.py::test_slugify -q  # single test
-
-# actionlint requires a separate binary download, see .github/workflows/ci.yml
-```
-
-CI (`.github/workflows/ci.yml`) runs all of the above on every push/PR — treat
-that job as the authoritative check list; run the same commands locally
-before considering a change done.
-
-A `.githooks/pre-push` hook runs the same checks (lint, type-check, security
-scan, workflow lint, dependency audit, tests) automatically before every
-`git push`. Enable it once per clone:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-Sync locally installed tool versions to what `requirements-dev.txt`/`ci.yml`
-pin (no network calls otherwise) with `bash .githooks/pre-push --update`.
-
-Run the script itself locally:
-
-```bash
-python3 weblate_checks_to_sarif.py --project P --component C --output /tmp/out.sarif
-```
-
-`--help` mirrors the action's inputs one-for-one.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the dev environment setup, the
+full lint/type-check/security/test command list, the pre-push hook, how
+changes land on `main` (the `ship`-branch flow vs. the normal fork-and-PR
+flow for external contributors), and the release process. That content
+applies identically to a human or an AI agent working in this repo, so it
+lives in one place instead of being duplicated here — read it before making
+a change.
 
 ## Architecture / data flow
 
@@ -143,78 +112,3 @@ and 503 (single retry after a short sleep) distinctly.
   e.g. `fix(i18n): ...`, `feat(ci): ...`, `chore(deps): ...`,
   `docs(readme): ...`) — same convention as OpenHangar, this repo's parent
   project.
-
-## Landing changes on main
-
-`main` is branch-protected: no direct pushes (`enforce_admins` is on, so
-this applies to the repo owner too), a linear history only (no merge
-commits — matches the merge-button setting, which allows rebase-merge
-only), and the `Lint, type-check, and test` status check must pass on an
-up-to-date branch before anything merges. There are two ways a change
-reaches `main`, and they're deliberately asymmetric:
-
-- **The repo owner's own commits**: `scripts/ship.sh` rebases the current
-  branch onto `origin/main` and force-pushes it to a `ship` branch.
-  `.github/workflows/auto-pr-merge.yml` reacts to that push by opening (or
-  reusing) a PR from `ship` into `main` and enabling GitHub auto-merge with
-  `--rebase`; it lands on its own once the status check passes, with **no
-  human approval** — by design, since the author already reviewed it by
-  writing it. Requires the `PAT_AUTO_PR_MERGE` repo secret (a fine-grained
-  PAT scoped to this repo, `Contents: read/write` + `Pull requests:
-  read/write`) — the default `GITHUB_TOKEN` can't be used because a PR it
-  opens would need manual workflow-run approval before its own triggered
-  CI run, defeating the point.
-- **External contributors**: fork the repo, branch, and open a PR straight
-  into `main` the normal GitHub way (see `CONTRIBUTING.md`) — `ship.sh` and
-  `auto-pr-merge.yml` have no part in this path; `ci.yml`'s existing
-  `pull_request:` trigger already covers it. These PRs get an actual human
-  review; merge them with "Rebase and merge" once you're satisfied, rather
-  than turning on auto-merge.
-
-This asymmetry is intentional and known to keep Scorecard's `Code-Review`
-check at 0 for solo commits (same as OpenHangar) — full auto-merge on your
-own PRs and required reviews are mutually exclusive, and solo review is a
-theater, not a safeguard.
-
-## Releasing new versions
-
-Unlike a package published via `pip`/`npm`, a GitHub Action is versioned
-purely by git tags — pushing to `main` alone never creates a release or
-moves a tag, so `@v1`/`@vX.Y.Z` consumers see no change until a maintainer
-does the steps below. Skip all of this for changes that don't affect a
-consumer's observable behavior (docs, tests, CI config, this file) — only
-cut a release when `action.yml` or `weblate_checks_to_sarif.py` actually
-changed what a consumer would see.
-
-1. Pick the version bump per [semver](https://semver.org), based on what
-   actually changed:
-   - **patch** (`vX.Y.Z+1`) — bug fix, no input/output/behavior change.
-   - **minor** (`vX.Y+1.0`) — new input/output or new backward-compatible
-     behavior.
-   - **major** (`vX+1.0.0`) — breaking change: removed/renamed input,
-     changed default behavior, dropped Python version support, etc.
-2. Tag the released commit on `main` and push the tag:
-   ```bash
-   git tag -a vX.Y.Z -m "vX.Y.Z"
-   git push origin vX.Y.Z
-   ```
-3. Move the floating major-version tag (`v1`, `v2`, ...) — the one
-   `uses: e2jk/weblate-checks-action@v1`-style consumers actually pin to —
-   so they pick up the new patch/minor automatically, same convention as
-   `actions/checkout`, `actions/setup-python`, etc.:
-   ```bash
-   git tag -f v1 vX.Y.Z
-   git push origin v1 --force
-   ```
-   Skip this step on a **major** bump — a new major version gets its own new
-   floating tag (`v2`) instead of moving `v1`, so existing `@v1` consumers
-   are unaffected until they explicitly opt in.
-4. Create a GitHub Release from the `vX.Y.Z` tag (UI, or
-   `gh release create vX.Y.Z --generate-notes`). Once this repo has been
-   published to the Marketplace (see `BACKLOG.md` for the one-time
-   first-publish steps), this is also what pushes the update to the
-   Marketplace listing.
-
-Force-pushing a moved tag is a rewrite of published history that every
-`@v1` consumer immediately picks up — per "Working with the human" above,
-propose these steps rather than running them unprompted.
