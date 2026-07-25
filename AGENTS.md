@@ -26,6 +26,12 @@ the GitHub Marketplace (see `BACKLOG.md` for that and other pending
 one-time/deferred items — check it for outstanding work before assuming a
 task is novel).
 
+**Working with the human:** implement, fix, test, and document — but you are
+not expected to push code, run destructive git commands, or commit. Propose
+a commit message (Conventional Commits format, see "Conventions" below) and
+let the human run the commit themselves, even if a change is otherwise
+complete and verified.
+
 ## Commands
 
 ```bash
@@ -47,6 +53,17 @@ python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 CI (`.github/workflows/ci.yml`) runs all of the above on every push/PR — treat
 that job as the authoritative check list; run the same commands locally
 before considering a change done.
+
+A `.githooks/pre-push` hook runs the same checks (lint, type-check, security
+scan, workflow lint, dependency audit, tests) automatically before every
+`git push`. Enable it once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Sync locally installed tool versions to what `requirements-dev.txt`/`ci.yml`
+pin (no network calls otherwise) with `bash .githooks/pre-push --update`.
 
 Run the script itself locally:
 
@@ -122,3 +139,7 @@ and 503 (single retry after a short sleep) distinctly.
 - Third-party Actions in workflows are pinned to a full commit SHA with a
   trailing `# vX.Y.Z` comment (see `action.yml` and `.github/workflows/*`) —
   match that pattern for any new `uses:` step.
+- Commit messages follow Conventional Commits (`type(scope): description`,
+  e.g. `fix(i18n): ...`, `feat(ci): ...`, `chore(deps): ...`,
+  `docs(readme): ...`) — same convention as OpenHangar, this repo's parent
+  project.
