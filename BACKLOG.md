@@ -16,12 +16,3 @@ and accept the Marketplace Developer Agreement (one-time, for the account's
 first published action). Requirements are already met: public repo,
 `action.yml` at the repo root, and a `branding` block (`check-circle` /
 `blue`).
-
-## One-time repo settings (not automatable)
-
-- **Enable "Allow auto-merge"** (Settings → General) — required for
-  `dependabot-automerge.yml`'s `gh pr merge --auto` to actually take effect;
-  without it the command succeeds but auto-merge never triggers.
-- **Branch protection on `main`** requiring the `lint-and-test` check, if/when
-  this repo gets outside contributors — not urgent for a single-maintainer
-  repo but worth doing before accepting external PRs.
