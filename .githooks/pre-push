@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+# Pre-push hook: run the same lint/type-check/security/test steps as
+# .github/workflows/ci.yml, locally, before code leaves the machine.
+#
+# Install once per clone:
+#   git config core.hooksPath .githooks
+#
+# Run from time to time to sync local tooling versions to what this repo
+# pins (requirements-dev.txt for pip tools, ci.yml for actionlint) — git
+# itself never passes these flags, so this is safe to leave in a hook:
+#   bash .githooks/pre-push --update
+
+set -uo pipefail
+
+UPDATE_MODE=false
+for arg in "$@"; do
+  case "$arg" in
+    --update|--install) UPDATE_MODE=true ;;
+  esac
+done
+
+FAILED_STEPS=()
+
+# Colour only when writing to a real terminal — a redirected/piped output
+# (or a CI log, though this hook doesn't run there) gets plain text.
+if [ -t 1 ]; then
+  _GREEN=$'\033[32m'; _RED=$'\033[31m'; _RESET=$'\033[0m'
+else
+  _GREEN=''; _RED=''; _RESET=''
+fi
+
+run_step_quiet() {
+  # run_step_quiet [--detail <pattern> | --detail-literal <string>] <label> <cmd...> [-- <clean-cmd...>]
+  # Runs a CLI tool whose own success output is noisy, unprefixed, and
+  # inconsistently coloured (ruff/mypy/bandit/zizmor/actionlint/pip-audit
+  # all differ). Captures stdout+stderr; on success it's discarded in
+  # favour of one uniform, green "[label] OK" line — unless:
+  #   --detail <pattern>   appends the last match of <pattern> in the tool's
+  #                         own output (e.g. mypy's own "1 source file" is
+  #                         meaningful, unlike ruff's "All checks passed!").
+  #   --detail-literal <string>
+  #                         appends a value computed by the caller instead of
+  #                         extracted from the wrapped command's own output.
+  # On failure "[label] FAILED" prints in red. If a "-- <clean-cmd...>" tail
+  # is given, that's what runs and prints (these tools are fast and rarely
+  # fail, so a second, non-verbose run is cheap) — for a <cmd> whose verbose
+  # flag was only turned on to expose a --detail count, and whose debug
+  # logging would otherwise bury the actual failure. Without "--", the
+  # primary command's own raw output is dumped as-is.
+  local detail_pattern="" detail=""
+  if [ "$1" = "--detail" ]; then
+    detail_pattern="$2"; shift 2
+  elif [ "$1" = "--detail-literal" ]; then
+    detail="$2"; shift 2
+  fi
+  local label="$1"; shift
+  local cmd=() clean_cmd=() in_clean=false
+  for a in "$@"; do
+    if ! $in_clean && [ "$a" = "--" ]; then
+      in_clean=true
+      continue
+    fi
+    if $in_clean; then clean_cmd+=("$a"); else cmd+=("$a"); fi
+  done
+
+  local output
+  if output="$("${cmd[@]}" 2>&1)"; then
+    if [ -n "$detail_pattern" ]; then
+      detail="$(echo "$output" | grep -oE "$detail_pattern" | tail -1)"
+    fi
+    echo "${_GREEN}[$label] OK${detail:+ — $detail}${_RESET}"
+  else
+    FAILED_STEPS+=("$label")
+    echo "${_RED}[$label] FAILED${_RESET}"
+    if [ "${#clean_cmd[@]}" -gt 0 ]; then
+      output="$("${clean_cmd[@]}" 2>&1)"
+    fi
+    [ -n "$output" ] && echo "$output"
+  fi
+}
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+PYTHON="$REPO_ROOT/.venv/bin/python"
+RUFF="$REPO_ROOT/.venv/bin/ruff"
+MYPY="$REPO_ROOT/.venv/bin/mypy"
+BANDIT="$REPO_ROOT/.venv/bin/bandit"
+PIP_AUDIT="$REPO_ROOT/.venv/bin/pip-audit"
+ZIZMOR="$REPO_ROOT/.venv/bin/zizmor"
+DEV_TXT="$REPO_ROOT/requirements-dev.txt"
+CI_YML="$REPO_ROOT/.github/workflows/ci.yml"
+
+# ── Version-pin lookups: compare local installs against what this repo pins,
+# no network calls — "are you in sync with what CI actually runs", not "is
+# there a newer upstream release". ───────────────────────────────────────────
+_pinned_pip_version() {
+  grep -E "^$1==" "$DEV_TXT" 2>/dev/null | head -1 | cut -d= -f3
+}
+
+_installed_pip_version() {
+  [ -x "$PYTHON" ] || return
+  "$REPO_ROOT/.venv/bin/pip" show "$1" 2>/dev/null | awk -F': ' '/^Version:/{print $2}'
+}
+
+_pinned_actionlint_version() {
+  grep -oE 'actionlint_[0-9]+\.[0-9]+\.[0-9]+_linux_amd64\.tar\.gz' "$CI_YML" 2>/dev/null \
+    | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'
+}
+
+_pinned_actionlint_sha256() {
+  grep -oE '[0-9a-f]{64}  actionlint\.tar\.gz' "$CI_YML" 2>/dev/null | head -1 | cut -d' ' -f1
+}
+
+if [ ! -x "$PYTHON" ]; then
+  echo "[pre-push] .venv not found — skipping checks"
+  exit 0
+fi
+
+if $UPDATE_MODE; then
+  echo "[pre-push --update] Syncing local tooling to the versions this repo pins..."
+  echo "[pre-push --update] pip install -r requirements-dev.txt"
+  "$REPO_ROOT/.venv/bin/pip" install --quiet -r "$DEV_TXT"
+
+  AL_VERSION="$(_pinned_actionlint_version)"
+  AL_SHA="$(_pinned_actionlint_sha256)"
+  if [ -n "$AL_VERSION" ] && [ -n "$AL_SHA" ]; then
+    echo "[pre-push --update] Installing actionlint v${AL_VERSION} to ~/.local/bin..."
+    mkdir -p "$HOME/.local/bin"
+    TMP_TGZ="$(mktemp)"
+    if curl -sfL -o "$TMP_TGZ" "https://github.com/rhysd/actionlint/releases/download/v${AL_VERSION}/actionlint_${AL_VERSION}_linux_amd64.tar.gz" \
+       && echo "${AL_SHA}  ${TMP_TGZ}" | sha256sum -c - >/dev/null 2>&1; then
+      tar xzf "$TMP_TGZ" -C "$HOME/.local/bin" actionlint
+      echo "[pre-push --update] actionlint v${AL_VERSION} installed."
+    else
+      echo "[pre-push --update] WARNING: actionlint download/checksum failed — left untouched."
+    fi
+    rm -f "$TMP_TGZ"
+  else
+    echo "[pre-push --update] Could not determine the pinned actionlint version from ci.yml — skipping."
+  fi
+
+  echo "[pre-push --update] Done. Continuing with the normal checks..."
+  echo ""
+fi
+
+# ── Ruff ──────────────────────────────────────────────────────────────────────
+if [ -x "$RUFF" ]; then
+  echo "[ruff-lint] Running Ruff linter..."
+  # -v logs one debug line per resolved file (few, even clean) — fine to
+  # discard on success, but on failure that noise would bury the actual
+  # violation, so re-run without -v for the failure dump.
+  run_step_quiet --detail 'Checked [0-9]+ files?' "ruff-lint"      "$RUFF" check -v "$REPO_ROOT" -- "$RUFF" check "$REPO_ROOT"
+  echo "[ruff-format] Running Ruff formatter check..."
+  run_step_quiet --detail '[0-9]+ files? already formatted' "ruff-format"    "$RUFF" format --check "$REPO_ROOT"
+else
+  echo "[ruff] not found in .venv — skipping (run: pip install -r requirements-dev.txt)"
+fi
+
+# ── mypy ──────────────────────────────────────────────────────────────────────
+if [ -x "$MYPY" ]; then
+  echo "[mypy] Running mypy type-checker..."
+  run_step_quiet --detail 'Success: no issues found in [0-9]+ source files?' "mypy" \
+    "$MYPY" "$REPO_ROOT/weblate_checks_to_sarif.py"
+else
+  echo "[mypy] not found in .venv — skipping (run: pip install -r requirements-dev.txt)"
+fi
+
+# ── bandit ────────────────────────────────────────────────────────────────────
+if [ -x "$BANDIT" ]; then
+  echo "[bandit] Running bandit security scan..."
+  run_step_quiet --detail 'Total lines of code: [0-9]+' "bandit" \
+    "$BANDIT" -c "$REPO_ROOT/pyproject.toml" -r "$REPO_ROOT/weblate_checks_to_sarif.py" -ll -i
+else
+  echo "[bandit] not found in .venv — skipping (run: pip install -r requirements-dev.txt)"
+fi
+
+# ── zizmor ────────────────────────────────────────────────────────────────────
+if [ -x "$ZIZMOR" ]; then
+  echo "[zizmor] Linting GitHub Actions workflows and action.yml..."
+  run_step_quiet --detail '[0-9]+ ignored' "zizmor" \
+    "$ZIZMOR" -q --persona=pedantic --offline "$REPO_ROOT/.github/" "$REPO_ROOT/action.yml"
+else
+  echo "[zizmor] not found in .venv — skipping (run: pip install -r requirements-dev.txt)"
+fi
+
+# ── actionlint ────────────────────────────────────────────────────────────────
+if command -v actionlint >/dev/null 2>&1; then
+  echo "[actionlint] Linting GitHub Actions workflows..."
+  run_step_quiet --detail 'Found [0-9]+ errors? in [0-9]+ files?' "actionlint" \
+    actionlint -color -verbose "$REPO_ROOT/.github/workflows/"*.yml
+else
+  echo "[actionlint] not found on PATH — skipping (run: bash <(curl -sf https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest ~/.local/bin)"
+fi
+
+# ── pip-audit ─────────────────────────────────────────────────────────────────
+if [ -x "$PIP_AUDIT" ]; then
+  echo "[pip-audit] Auditing dependencies for known vulnerabilities..."
+  # Matches ci.yml exactly: -r requirements-dev.txt, not --local — the
+  # latter also audits the venv's own bootstrapped pip, which isn't a
+  # project dependency and is routinely behind latest right after
+  # `python -m venv`, producing noise CI doesn't have.
+  pkg_count="$(grep -cE '^[A-Za-z]' "$DEV_TXT" 2>/dev/null)"
+  run_step_quiet --detail-literal "${pkg_count} dependencies audited" "pip-audit" \
+    "$PIP_AUDIT" -r "$DEV_TXT"
+else
+  echo "[pip-audit] not found in .venv — skipping (run: pip install -r requirements-dev.txt)"
+fi
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+# Small, stdlib-only, all-network-mocked suite — cheap enough to run in full
+# on every push instead of trusting a possibly-stale coverage report.
+if [ -x "$PYTHON" ]; then
+  echo "[pytest] Running test suite..."
+  run_step_quiet --detail '[0-9]+ passed' "pytest" \
+    "$PYTHON" -m pytest "$REPO_ROOT/tests/" -q
+else
+  echo "[pytest] .venv python not found — skipping (run: pip install -r requirements-dev.txt)"
+fi
+
+# ── Local tool version drift (non-blocking) ────────────────────────────────────
+STALE_TOOLS=()
+for pkg in ruff mypy bandit pip-audit zizmor pytest; do
+  pinned="$(_pinned_pip_version "$pkg")"
+  installed="$(_installed_pip_version "$pkg")"
+  if [ -n "$pinned" ] && [ -n "$installed" ] && [ "$pinned" != "$installed" ]; then
+    STALE_TOOLS+=("$pkg ($installed -> $pinned)")
+  fi
+done
+if command -v actionlint >/dev/null 2>&1; then
+  al_pinned="$(_pinned_actionlint_version)"
+  al_installed="$(actionlint -version 2>/dev/null | head -1)"
+  if [ -n "$al_pinned" ] && [ -n "$al_installed" ] && [ "$al_pinned" != "$al_installed" ]; then
+    STALE_TOOLS+=("actionlint ($al_installed -> $al_pinned)")
+  fi
+fi
+if [ "${#STALE_TOOLS[@]}" -gt 0 ]; then
+  echo ""
+  echo "[pre-push] Locally installed tool(s) behind what this repo pins: ${STALE_TOOLS[*]}"
+  echo "[pre-push] Run 'bash .githooks/pre-push --update' to sync."
+fi
+
+# ── Final summary ─────────────────────────────────────────────────────────────
+if [ "${#FAILED_STEPS[@]}" -gt 0 ]; then
+  echo ""
+  echo "${_RED}[pre-push] FAILED steps: ${FAILED_STEPS[*]}${_RESET}"
+  exit 1
+fi
