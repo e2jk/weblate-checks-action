@@ -208,6 +208,11 @@ git config core.hooksPath .githooks
 conventions — read it before making a change, whether you're a human or an
 AI coding agent.
 
+`main` is branch-protected (no direct pushes, linear history only, CI must
+pass) — see [`AGENTS.md` § Landing changes on
+main](AGENTS.md#landing-changes-on-main) for how changes actually get there,
+including the normal fork-and-PR flow for outside contributors.
+
 ## A note on versioning
 
 Consumers should pin to a release tag (`@v1`) or, for maximum supply-chain

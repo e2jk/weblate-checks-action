@@ -144,6 +144,38 @@ and 503 (single retry after a short sleep) distinctly.
   `docs(readme): ...`) — same convention as OpenHangar, this repo's parent
   project.
 
+## Landing changes on main
+
+`main` is branch-protected: no direct pushes (`enforce_admins` is on, so
+this applies to the repo owner too), a linear history only (no merge
+commits — matches the merge-button setting, which allows rebase-merge
+only), and the `Lint, type-check, and test` status check must pass on an
+up-to-date branch before anything merges. There are two ways a change
+reaches `main`, and they're deliberately asymmetric:
+
+- **The repo owner's own commits**: `scripts/ship.sh` rebases the current
+  branch onto `origin/main` and force-pushes it to a `ship` branch.
+  `.github/workflows/auto-pr-merge.yml` reacts to that push by opening (or
+  reusing) a PR from `ship` into `main` and enabling GitHub auto-merge with
+  `--rebase`; it lands on its own once the status check passes, with **no
+  human approval** — by design, since the author already reviewed it by
+  writing it. Requires the `PAT_AUTO_PR_MERGE` repo secret (a fine-grained
+  PAT scoped to this repo, `Contents: read/write` + `Pull requests:
+  read/write`) — the default `GITHUB_TOKEN` can't be used because a PR it
+  opens would need manual workflow-run approval before its own triggered
+  CI run, defeating the point.
+- **External contributors**: fork the repo, branch, and open a PR straight
+  into `main` the normal GitHub way (see `CONTRIBUTING.md`) — `ship.sh` and
+  `auto-pr-merge.yml` have no part in this path; `ci.yml`'s existing
+  `pull_request:` trigger already covers it. These PRs get an actual human
+  review; merge them with "Rebase and merge" once you're satisfied, rather
+  than turning on auto-merge.
+
+This asymmetry is intentional and known to keep Scorecard's `Code-Review`
+check at 0 for solo commits (same as OpenHangar) — full auto-merge on your
+own PRs and required reviews are mutually exclusive, and solo review is a
+theater, not a safeguard.
+
 ## Releasing new versions
 
 Unlike a package published via `pip`/`npm`, a GitHub Action is versioned
