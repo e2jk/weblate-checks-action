@@ -143,3 +143,46 @@ and 503 (single retry after a short sleep) distinctly.
   e.g. `fix(i18n): ...`, `feat(ci): ...`, `chore(deps): ...`,
   `docs(readme): ...`) — same convention as OpenHangar, this repo's parent
   project.
+
+## Releasing new versions
+
+Unlike a package published via `pip`/`npm`, a GitHub Action is versioned
+purely by git tags — pushing to `main` alone never creates a release or
+moves a tag, so `@v1`/`@vX.Y.Z` consumers see no change until a maintainer
+does the steps below. Skip all of this for changes that don't affect a
+consumer's observable behavior (docs, tests, CI config, this file) — only
+cut a release when `action.yml` or `weblate_checks_to_sarif.py` actually
+changed what a consumer would see.
+
+1. Pick the version bump per [semver](https://semver.org), based on what
+   actually changed:
+   - **patch** (`vX.Y.Z+1`) — bug fix, no input/output/behavior change.
+   - **minor** (`vX.Y+1.0`) — new input/output or new backward-compatible
+     behavior.
+   - **major** (`vX+1.0.0`) — breaking change: removed/renamed input,
+     changed default behavior, dropped Python version support, etc.
+2. Tag the released commit on `main` and push the tag:
+   ```bash
+   git tag -a vX.Y.Z -m "vX.Y.Z"
+   git push origin vX.Y.Z
+   ```
+3. Move the floating major-version tag (`v1`, `v2`, ...) — the one
+   `uses: e2jk/weblate-checks-action@v1`-style consumers actually pin to —
+   so they pick up the new patch/minor automatically, same convention as
+   `actions/checkout`, `actions/setup-python`, etc.:
+   ```bash
+   git tag -f v1 vX.Y.Z
+   git push origin v1 --force
+   ```
+   Skip this step on a **major** bump — a new major version gets its own new
+   floating tag (`v2`) instead of moving `v1`, so existing `@v1` consumers
+   are unaffected until they explicitly opt in.
+4. Create a GitHub Release from the `vX.Y.Z` tag (UI, or
+   `gh release create vX.Y.Z --generate-notes`). Once this repo has been
+   published to the Marketplace (see `BACKLOG.md` for the one-time
+   first-publish steps), this is also what pushes the update to the
+   Marketplace listing.
+
+Force-pushing a moved tag is a rewrite of published history that every
+`@v1` consumer immediately picks up — per "Working with the human" above,
+propose these steps rather than running them unprompted.

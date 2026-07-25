@@ -216,6 +216,10 @@ every third-party action it uses (see any workflow under
 [`.github/workflows/`](https://github.com/e2jk/OpenHangar/tree/main/.github/workflows)
 there for the pattern: `uses: owner/action@<full-sha> # vX.Y.Z`).
 
+Maintainers: pushing to `main` never creates a release or moves a tag by
+itself — see [`AGENTS.md` § Releasing new
+versions](AGENTS.md#releasing-new-versions) for the tagging/release process.
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
