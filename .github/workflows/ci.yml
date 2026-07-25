@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions: read-all  # zizmor: ignore[excessive-permissions] intentional: workflow default is read-only, every job opts into exactly the write scopes it needs
+
+concurrency:
+  group: ${{ format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: Lint, type-check, and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Set up venv
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --quiet -r requirements-dev.txt
+
+      - name: Lint with Ruff
+        run: .venv/bin/ruff check .
+
+      - name: Check formatting with Ruff
+        run: .venv/bin/ruff format --check .
+
+      - name: Type-check with mypy
+        run: .venv/bin/mypy weblate_checks_to_sarif.py
+
+      - name: Security scan with bandit
+        run: .venv/bin/bandit -c pyproject.toml -r weblate_checks_to_sarif.py -ll -i
+
+      - name: Lint workflows and action.yml with zizmor
+        run: .venv/bin/zizmor -q --persona=pedantic --offline .github/ action.yml
+
+      - name: Install actionlint
+        run: |
+          curl -sfL -o actionlint.tar.gz https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz" | sha256sum -c -
+          tar xzf actionlint.tar.gz actionlint
+
+      - name: Lint workflows with actionlint
+        run: ./actionlint -color
+
+      - name: Audit dependencies (pip-audit)
+        run: .venv/bin/pip-audit -r requirements-dev.txt
+
+      - name: Run tests
+        run: .venv/bin/python -m pytest tests/ --cov=. --cov-report=term-missing -q
+
+  dependency-review:
+    name: Dependency review (new/changed dependencies)
+    # Complements pip-audit, which audits the resulting dependency set — this
+    # instead fails a PR that *introduces* a vulnerable, malicious, or
+    # disallowed-license dependency, before merge. Only runs on pull_request
+    # (the action doesn't support plain push events).
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: low
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, PSF-2.0, LGPL-3.0-or-later, MPL-2.0, MIT-CMU, 0BSD
