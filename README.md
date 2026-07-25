@@ -175,43 +175,12 @@ list — it mirrors the action's inputs one-for-one.
 
 ## Development
 
-The shipped script (`weblate_checks_to_sarif.py`) itself has no dependencies
-beyond the Python standard library, as noted above — but working on this
-repo (linting, type-checking, security scanning, running tests) uses a
-handful of dev-only tools, kept separate in `requirements-dev.txt`:
-
-```bash
-python -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
-
-.venv/bin/ruff check .                                      # lint
-.venv/bin/ruff format .                                      # auto-format
-.venv/bin/mypy weblate_checks_to_sarif.py                    # type-check (strict mode)
-.venv/bin/bandit -c pyproject.toml -r weblate_checks_to_sarif.py -ll -i  # security scan
-.venv/bin/zizmor -q --persona=pedantic --offline .github/ action.yml     # workflow/action.yml lint
-.venv/bin/pip-audit -r requirements-dev.txt                  # dependency audit
-
-.venv/bin/python -m pytest tests/ --cov=. --cov-report=term-missing -q   # tests, with coverage
-```
-
-Tests mock all network calls — no live Weblate instance is contacted.
-
-A `.githooks/pre-push` hook runs all of the above automatically before every
-push (plus [actionlint](https://github.com/rhysd/actionlint), installed
-separately — see `.github/workflows/ci.yml`). Enable it once per clone:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-[`AGENTS.md`](AGENTS.md) has the full architecture write-up and repo
-conventions — read it before making a change, whether you're a human or an
-AI coding agent.
-
-`main` is branch-protected (no direct pushes, linear history only, CI must
-pass) — see [`AGENTS.md` § Landing changes on
-main](AGENTS.md#landing-changes-on-main) for how changes actually get there,
-including the normal fork-and-PR flow for outside contributors.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the dev environment setup, the
+full lint/type-check/security/test command list, the pre-push hook, and how
+changes land on `main` (including the fork-and-PR flow for outside
+contributors). [`AGENTS.md`](AGENTS.md) has the architecture write-up and
+code conventions — read it before making a change, whether you're a human
+or an AI coding agent.
 
 ## A note on versioning
 
@@ -222,8 +191,9 @@ every third-party action it uses (see any workflow under
 there for the pattern: `uses: owner/action@<full-sha> # vX.Y.Z`).
 
 Maintainers: pushing to `main` never creates a release or moves a tag by
-itself — see [`AGENTS.md` § Releasing new
-versions](AGENTS.md#releasing-new-versions) for the tagging/release process.
+itself — see [`CONTRIBUTING.md` § Releasing new
+versions](CONTRIBUTING.md#releasing-new-versions) for the tagging/release
+process.
 
 ## License
 
