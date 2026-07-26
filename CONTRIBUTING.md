@@ -35,6 +35,35 @@ python -m venv .venv
 `.github/workflows/ci.yml`. Tests mock all network calls — no live Weblate
 instance is contacted.
 
+### Fuzzing
+
+`fuzz/` has [Atheris](https://github.com/google/atheris) harnesses for the
+functions that handle data from an external/untrusted source (HTML scraped
+from Weblate, the `location` field from its API, a `--weblate-url`/`web_url`
+that could point anywhere): `scrape_checks`'s HTML parsing, `_parse_locations`,
+`_slugify`, and `_fetch`'s URL-scheme validation (network calls are stubbed
+out in that last harness — it only exercises the scheme guard, never makes a
+real request). Same technique as OpenHangar's `fuzz/`, adapted to this
+repo's single-module layout.
+
+Atheris is Linux-only (no macOS/Windows wheels), so it's kept out of
+`requirements-dev.txt` in a separate hash-pinned `requirements-fuzz.txt`:
+
+```bash
+.venv/bin/pip install --require-hashes -r requirements-fuzz.txt
+
+.venv/bin/python fuzz/fuzz_slugify.py fuzz/corpus/fuzz_slugify -max_total_time=10
+```
+
+`.github/workflows/fuzzing.yml` runs all four harnesses after every merge to
+`main` (a light ~2min budget) plus a deeper ~20min weekly run, with the
+corpus cached across runs. It's deliberately independent of `ci.yml` —
+not a required status check, triggered by push to `main` rather than on the
+PR itself, so a fuzz finding can never mechanically block a merge or
+release. A crash surfaces as a job summary (traceback) and a SARIF upload
+to the Security tab; every finding still needs human triage to confirm it's
+a real, reachable bug before acting on it.
+
 CI (`.github/workflows/ci.yml`) runs all of the above on every push/PR —
 treat that job as the authoritative check list; run the same commands
 locally before considering a change done.
