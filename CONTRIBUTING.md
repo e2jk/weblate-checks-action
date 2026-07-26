@@ -134,9 +134,30 @@ changed what a consumer would see.
      behavior.
    - **major** (`vX+1.0.0`) — breaking change: removed/renamed input,
      changed default behavior, dropped Python version support, etc.
-2. Tag the released commit on `main` and push the tag:
+2. Tag the released commit on `main` and push the tag — **only after**
+   confirming the commit actually landed on `origin/main`, not before.
+   Landing here always goes through `scripts/ship.sh` -> a PR -> a
+   rebase-merge (see "Landing changes on main" above), and a rebase-merge
+   *rewrites every commit it merges* (new parent, so a new SHA) — the SHA
+   you have locally right after `git commit`, or even right after
+   `scripts/ship.sh` pushes to `ship`, is **not** the SHA that ends up on
+   `main`. Tagging too early tags a commit that's about to become
+   unreachable once the ship branch is deleted post-merge. The safe
+   sequence:
    ```bash
-   git tag -a vX.Y.Z -m "vX.Y.Z"
+   # 1. Ship it and wait for the PR to actually merge (watch it land, e.g.
+   #    `gh pr checks` / `gh pr view --json state`, or just check on GitHub).
+   scripts/ship.sh
+
+   # 2. Only then, fetch and confirm the real post-merge SHA:
+   git fetch origin
+   git log --oneline origin/main -1
+
+   # 3. Tag *that* SHA explicitly (don't rely on local main's HEAD either —
+   #    it can carry stray local-only commits main never received, e.g. a
+   #    rebase-merge dropping an empty commit entirely; see "Verified
+   #    commits" discussion history for a worked example):
+   git tag -a vX.Y.Z <that-sha> -m "vX.Y.Z"
    git push origin vX.Y.Z
    ```
 3. Move the floating major-version tag (`v1`, `v2`, ...) — the one
