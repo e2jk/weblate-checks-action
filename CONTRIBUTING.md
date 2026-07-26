@@ -49,10 +49,12 @@ actually exercise the new/changed behavior, not just execute the lines.
 `fuzz/` has [Atheris](https://github.com/google/atheris) harnesses for the
 functions that handle data from an external/untrusted source (HTML scraped
 from Weblate, the `location` field from its API, a `--weblate-url`/`web_url`
-that could point anywhere): `scrape_checks`'s HTML parsing, `_parse_locations`,
-`_slugify`, and `_fetch`'s URL-scheme validation (network calls are stubbed
-out in that last harness — it only exercises the scheme guard, never makes a
-real request). Same technique as OpenHangar's `fuzz/`, adapted to this
+that could point anywhere, the JSON body of API responses): `scrape_checks`'s
+HTML parsing, `_parse_locations`, `_slugify`, `_fetch`'s URL-scheme
+validation, and `fetch_component_languages`'s handling of the Weblate API's
+JSON response (network calls are stubbed out in the last two harnesses —
+they only exercise the scheme guard / the response-parsing path, never make
+a real request). Same technique as OpenHangar's `fuzz/`, adapted to this
 repo's single-module layout.
 
 Atheris is Linux-only (no macOS/Windows wheels), so it's kept out of
@@ -64,7 +66,7 @@ Atheris is Linux-only (no macOS/Windows wheels), so it's kept out of
 .venv/bin/python fuzz/fuzz_slugify.py fuzz/corpus/fuzz_slugify -max_total_time=10
 ```
 
-`.github/workflows/fuzzing.yml` runs all four harnesses after every merge to
+`.github/workflows/fuzzing.yml` runs all harnesses after every merge to
 `main` (a light ~2min budget) plus a deeper ~20min weekly run, with the
 corpus cached across runs. It's deliberately independent of `ci.yml` —
 not a required status check, triggered by push to `main` rather than on the
