@@ -248,7 +248,11 @@ def _parse_locations(location_field: str) -> list[tuple[str, int | None]]:
         if not token:
             continue
         uri, sep, line_str = token.rpartition(":")
-        if uri and sep and line_str.isdigit():
+        # isdecimal(), not isdigit(): isdigit() accepts Unicode digit
+        # variants like '³' (superscript three) that int() can't actually
+        # parse, raising ValueError instead of falling back gracefully —
+        # isdecimal() is the strict "int() will accept this" check.
+        if uri and sep and line_str.isdecimal():
             locations.append((uri, int(line_str)))
         else:
             locations.append((token, None))

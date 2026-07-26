@@ -43,6 +43,9 @@ def test_slugify(name, expected):
         # produce a location with an empty artifactLocation.uri; falls back
         # to treating the whole token as an opaque (unparsed) uri instead.
         (":5", [(":5", None)]),
+        # '³' (superscript three, U+00B3) passes str.isdigit() but isn't
+        # parseable by int() — found by fuzz/fuzz_parse_locations.py.
+        ("foo.html:³", [("foo.html:³", None)]),
     ],
 )
 def test_parse_locations(location, expected):
