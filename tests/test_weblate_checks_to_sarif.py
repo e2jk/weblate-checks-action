@@ -164,6 +164,22 @@ def test_fetch_flagged_units_follows_pagination():
     assert [u["id"] for u in units] == [1, 2]
 
 
+def test_fetch_flagged_units_stops_on_pagination_that_never_ends():
+    # A malicious/misconfigured server (or a MITM, since http:// is
+    # accepted) whose "next" link never becomes falsy must not hang the run
+    # forever — it should degrade to a clean, catchable error instead.
+    looping_page = json.dumps(
+        {"results": [], "next": "https://example.org/api/units/?page=2"}
+    ).encode()
+
+    with (
+        patch.object(wcs, "_fetch", return_value=looping_page),
+        patch.object(wcs, "MAX_PAGINATION_PAGES", 3),
+        pytest.raises(wcs.WeblateApiError, match="Exceeded 3 pagination pages"),
+    ):
+        wcs.fetch_flagged_units("https://example.org", "proj", "comp", "fr", None)
+
+
 # ---------------------------------------------------------------------------
 # fetch_component_languages (auto-discovery)
 # ---------------------------------------------------------------------------
@@ -213,6 +229,22 @@ def test_fetch_component_languages_follows_pagination():
             "https://example.org", "proj", "comp", None
         )
     assert languages == ["en", "fr"]
+
+
+def test_fetch_component_languages_stops_on_pagination_that_never_ends():
+    looping_page = json.dumps(
+        {
+            "results": [],
+            "next": "https://example.org/api/components/proj/comp/translations/?page=2",
+        }
+    ).encode()
+
+    with (
+        patch.object(wcs, "_fetch", return_value=looping_page),
+        patch.object(wcs, "MAX_PAGINATION_PAGES", 3),
+        pytest.raises(wcs.WeblateApiError, match="Exceeded 3 pagination pages"),
+    ):
+        wcs.fetch_component_languages("https://example.org", "proj", "comp", None)
 
 
 # ---------------------------------------------------------------------------

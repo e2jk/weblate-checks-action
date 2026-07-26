@@ -68,6 +68,12 @@ TOOL_NAME = "weblate-checks-action"
 TOOL_INFO_URI = "https://github.com/e2jk/weblate-checks-action"
 WEBLATE_CHECKS_DOCS_URL = "https://docs.weblate.org/en/latest/user/checks.html"
 
+# Defensive bound on API pagination, at 100 results/page (100k records) far
+# above any real Weblate component — not a real-world ceiling. Without it, a
+# malicious/misconfigured server (or a MITM, since http:// is accepted) that
+# never returns a falsy "next" hangs the run forever.
+MAX_PAGINATION_PAGES = 1_000
+
 # Checks that mean a translation is malformed at render time, not just a
 # content-quality hint — these map to SARIF "warning" instead of "note".
 DEFAULT_WARNING_CHECKS = [
@@ -185,7 +191,15 @@ def fetch_component_languages(
     path = f"/api/components/{project}/{component}/translations/?page_size=100"
     codes: list[str] = []
     url: str | None = weblate_url + path
+    pages = 0
     while url:
+        pages += 1
+        if pages > MAX_PAGINATION_PAGES:
+            raise WeblateApiError(
+                f"Exceeded {MAX_PAGINATION_PAGES} pagination pages listing "
+                f"translations for {project}/{component} — the server's "
+                '"next" link never became empty.'
+            )
         data = json.loads(_fetch(url, token))
         for translation in data["results"]:
             code = translation.get("language_code") or translation["language"]["code"]
@@ -204,7 +218,15 @@ def fetch_flagged_units(
     path = "/api/units/?" + urllib.parse.urlencode({"q": query, "page_size": 100})
     units: list[Unit] = []
     url: str | None = weblate_url + path
+    pages = 0
     while url:
+        pages += 1
+        if pages > MAX_PAGINATION_PAGES:
+            raise WeblateApiError(
+                f"Exceeded {MAX_PAGINATION_PAGES} pagination pages listing "
+                f"flagged units for {project}/{component} ({language}) — the "
+                'server\'s "next" link never became empty.'
+            )
         data = json.loads(_fetch(url, token))
         units.extend(data["results"])
         url = data["next"]
