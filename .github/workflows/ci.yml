@@ -69,7 +69,7 @@ jobs:
         run: .venv/bin/pip-audit -r requirements-dev.txt
 
       - name: Run tests
-        run: .venv/bin/python -m pytest tests/ --cov=. --cov-report=term-missing -q
+        run: .venv/bin/python -m pytest tests/ --cov=. --cov-report=term-missing --cov-fail-under=100 -q
 
   dependency-review:
     name: Dependency review (new/changed dependencies)

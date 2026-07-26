@@ -208,13 +208,16 @@ else
   echo "[pip-audit] not found in .venv — skipping (run: pip install -r requirements-dev.txt)"
 fi
 
-# ── Tests ─────────────────────────────────────────────────────────────────────
-# Small, stdlib-only, all-network-mocked suite — cheap enough to run in full
-# on every push instead of trusting a possibly-stale coverage report.
+# ── Tests (with 100% coverage enforced) ────────────────────────────────────────
+# Small, stdlib-only, all-network-mocked suite — cheap enough to run in full,
+# with coverage, on every push instead of trusting a possibly-stale coverage
+# report (contrast OpenHangar's pre-push, which only spot-checks a coverage.xml
+# left behind by a separate recent run — not needed here since this suite is
+# fast enough to always run fresh).
 if [ -x "$PYTHON" ]; then
-  echo "[pytest] Running test suite..."
+  echo "[pytest] Running test suite (with coverage)..."
   run_step_quiet --detail '[0-9]+ passed' "pytest" \
-    "$PYTHON" -m pytest "$REPO_ROOT/tests/" -q
+    "$PYTHON" -m pytest "$REPO_ROOT/tests/" --cov="$REPO_ROOT" --cov-report=term-missing --cov-fail-under=100 -q
 else
   echo "[pytest] .venv python not found — skipping (run: pip install -r requirements-dev.txt)"
 fi

@@ -1,6 +1,6 @@
 import json
 import urllib.error
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -117,6 +117,31 @@ def test_fetch_raises_weblate_api_error_on_connection_failure():
     ):
         with pytest.raises(wcs.WeblateApiError, match="Could not reach"):
             wcs._fetch("https://example.org/api/units/", None)
+
+
+def test_fetch_rate_limit_message_includes_reset_time():
+    err = _http_error(429, headers={"X-RateLimit-Reset": "5400"})
+    with patch("urllib.request.urlopen", side_effect=err):
+        with pytest.raises(wcs.RateLimitExceeded, match=r"Resets in ~1h30m"):
+            wcs._fetch("https://example.org/api/units/", None)
+
+
+def test_fetch_reraises_unhandled_http_error():
+    with patch("urllib.request.urlopen", side_effect=_http_error(500)):
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            wcs._fetch("https://example.org/api/units/", None)
+    assert exc_info.value.code == 500
+
+
+def test_fetch_retries_once_on_503_then_succeeds():
+    success_resp = MagicMock()
+    success_resp.__enter__.return_value.read.return_value = b"ok"
+    with (
+        patch("urllib.request.urlopen", side_effect=[_http_error(503), success_resp]),
+        patch("time.sleep") as mock_sleep,
+    ):
+        assert wcs._fetch("https://example.org/api/units/", None) == b"ok"
+    mock_sleep.assert_called_once_with(5)
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +279,31 @@ def test_build_sarif_maps_severity_and_deduplicates_rules():
     assert all("locations" not in r for r in en_results)
 
 
+def test_build_sarif_verbose_logs_each_string(capsys):
+    with (
+        patch.object(
+            wcs,
+            "fetch_flagged_units",
+            return_value=[_unit(1, "Hello world", "Bonjour", "")],
+        ),
+        patch.object(wcs, "scrape_checks", return_value=[("Reused translation", "")]),
+        patch("time.sleep"),
+    ):
+        wcs.build_sarif(
+            "https://example.org",
+            "proj",
+            "comp",
+            ["fr"],
+            None,
+            0.0,
+            set(),
+            verbose=True,
+        )
+    captured = capsys.readouterr()
+    assert "Hello world" in captured.err
+    assert "Reused translation" in captured.err
+
+
 def test_build_sarif_falls_back_to_unknown_check_when_scrape_finds_nothing():
     with (
         patch.object(
@@ -292,3 +342,102 @@ def test_write_github_output_appends_key_value_pairs(tmp_path, monkeypatch):
 def test_write_github_output_is_a_noop_without_the_env_var(monkeypatch):
     monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
     wcs._write_github_output({"a": "b"})  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# main() CLI entrypoint
+# ---------------------------------------------------------------------------
+
+
+def test_main_uses_explicit_languages_and_writes_sarif_output(
+    monkeypatch, tmp_path, capsys
+):
+    output = tmp_path / "out.sarif"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "prog",
+            "--project",
+            "proj",
+            "--component",
+            "comp",
+            "--languages",
+            "fr,en",
+            "--token",
+            "tok123",
+            "--output",
+            str(output),
+        ],
+    )
+    fake_sarif = {"runs": [{"results": [{"a": 1}, {"b": 2}]}]}
+    with (
+        patch.object(wcs, "build_sarif", return_value=(fake_sarif, 2)) as mock_build,
+        patch.object(wcs, "fetch_component_languages") as mock_discover,
+    ):
+        rc = wcs.main()
+
+    assert rc == 0
+    mock_discover.assert_not_called()
+    assert mock_build.call_args.args[3] == ["fr", "en"]
+    assert mock_build.call_args.args[4] == "tok123"
+    assert json.loads(output.read_text()) == fake_sarif
+    captured = capsys.readouterr()
+    assert "Using Weblate API token" in captured.err
+    assert "Wrote 2 result(s)" in captured.err
+
+
+def test_main_auto_discovers_languages_when_omitted(monkeypatch, tmp_path, capsys):
+    monkeypatch.delenv("WEBLATE_API_TOKEN", raising=False)
+    output = tmp_path / "out.sarif"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "prog",
+            "--project",
+            "proj",
+            "--component",
+            "comp",
+            "--output",
+            str(output),
+        ],
+    )
+    with (
+        patch.object(
+            wcs, "fetch_component_languages", return_value=["en", "fr"]
+        ) as mock_discover,
+        patch.object(
+            wcs, "build_sarif", return_value=({"runs": [{"results": []}]}, 0)
+        ) as mock_build,
+    ):
+        rc = wcs.main()
+
+    assert rc == 0
+    mock_discover.assert_called_once()
+    assert mock_build.call_args.args[3] == ["en", "fr"]
+    captured = capsys.readouterr()
+    assert "No Weblate API token set" in captured.err
+    assert "Discovered 2 language(s): en, fr" in captured.err
+
+
+def test_main_returns_1_on_tool_error(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "sys.argv",
+        ["prog", "--project", "p", "--component", "c", "--languages", "fr"],
+    )
+    with patch.object(wcs, "build_sarif", side_effect=wcs.ToolError("boom")):
+        rc = wcs.main()
+
+    assert rc == 1
+    assert "Error: boom" in capsys.readouterr().err
+
+
+def test_main_returns_130_on_keyboard_interrupt(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "sys.argv",
+        ["prog", "--project", "p", "--component", "c", "--languages", "fr"],
+    )
+    with patch.object(wcs, "build_sarif", side_effect=KeyboardInterrupt()):
+        rc = wcs.main()
+
+    assert rc == 130
+    assert "Interrupted" in capsys.readouterr().err
