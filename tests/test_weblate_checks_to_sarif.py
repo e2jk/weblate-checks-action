@@ -180,6 +180,33 @@ def test_fetch_flagged_units_stops_on_pagination_that_never_ends():
         wcs.fetch_flagged_units("https://example.org", "proj", "comp", "fr", None)
 
 
+# A JSON object nested this deep blows Python's recursion limit inside
+# json.loads() itself — deep enough to be reliable, still parses in ~10ms.
+_DEEPLY_NESTED_JSON = ('{"a":' * 200_000 + "1" + "}" * 200_000).encode()
+
+
+@pytest.mark.parametrize(
+    "bad_response",
+    [
+        b"not json",
+        b"\xff\xfe not valid utf-8",
+        b'{"results": []}',  # missing "next"
+        b'{"next": null}',  # missing "results"
+        b'{"results": 5, "next": null}',  # "results" not iterable
+        _DEEPLY_NESTED_JSON,
+    ],
+)
+def test_fetch_flagged_units_raises_clean_error_on_malformed_response(bad_response):
+    # A malicious/misconfigured server (or a MITM, since http:// is
+    # accepted) fully controls this response body — a bad shape must not
+    # crash with a raw traceback.
+    with (
+        patch.object(wcs, "_fetch", return_value=bad_response),
+        pytest.raises(wcs.WeblateApiError, match="unexpected response"),
+    ):
+        wcs.fetch_flagged_units("https://example.org", "proj", "comp", "fr", None)
+
+
 # ---------------------------------------------------------------------------
 # fetch_component_languages (auto-discovery)
 # ---------------------------------------------------------------------------
@@ -243,6 +270,29 @@ def test_fetch_component_languages_stops_on_pagination_that_never_ends():
         patch.object(wcs, "_fetch", return_value=looping_page),
         patch.object(wcs, "MAX_PAGINATION_PAGES", 3),
         pytest.raises(wcs.WeblateApiError, match="Exceeded 3 pagination pages"),
+    ):
+        wcs.fetch_component_languages("https://example.org", "proj", "comp", None)
+
+
+@pytest.mark.parametrize(
+    "bad_response",
+    [
+        b"not json",
+        b"\xff\xfe not valid utf-8",
+        b'{"results": []}',  # missing "next"
+        b'{"next": null}',  # missing "results"
+        b'{"results": 5, "next": null}',  # "results" not iterable
+        b'{"results": ["not-a-dict"], "next": null}',  # no .get()
+        b'{"results": [{}], "next": null}',  # no "language_code"/"language"
+        _DEEPLY_NESTED_JSON,
+    ],
+)
+def test_fetch_component_languages_raises_clean_error_on_malformed_response(
+    bad_response,
+):
+    with (
+        patch.object(wcs, "_fetch", return_value=bad_response),
+        pytest.raises(wcs.WeblateApiError, match="unexpected response"),
     ):
         wcs.fetch_component_languages("https://example.org", "proj", "comp", None)
 

@@ -200,11 +200,29 @@ def fetch_component_languages(
                 f"translations for {project}/{component} — the server's "
                 '"next" link never became empty.'
             )
-        data = json.loads(_fetch(url, token))
-        for translation in data["results"]:
-            code = translation.get("language_code") or translation["language"]["code"]
-            codes.append(code)
-        url = data["next"]
+        try:
+            data = json.loads(_fetch(url, token))
+            for translation in data["results"]:
+                code = (
+                    translation.get("language_code") or translation["language"]["code"]
+                )
+                codes.append(code)
+            url = data["next"]
+        except (
+            json.JSONDecodeError,
+            UnicodeDecodeError,
+            KeyError,
+            TypeError,
+            AttributeError,
+            RecursionError,
+        ) as exc:
+            # A malformed/adversarial response (bad JSON, non-UTF-8 bytes, an
+            # unexpected shape, or pathologically deep nesting) from a
+            # misconfigured server or a MITM (http:// is accepted) — a
+            # known, actionable failure mode, not a raw traceback.
+            raise WeblateApiError(
+                f"Weblate returned an unexpected response from {url}: {exc}"
+            ) from exc
     return codes
 
 
@@ -227,9 +245,22 @@ def fetch_flagged_units(
                 f"flagged units for {project}/{component} ({language}) — the "
                 'server\'s "next" link never became empty.'
             )
-        data = json.loads(_fetch(url, token))
-        units.extend(data["results"])
-        url = data["next"]
+        try:
+            data = json.loads(_fetch(url, token))
+            units.extend(data["results"])
+            url = data["next"]
+        except (
+            json.JSONDecodeError,
+            UnicodeDecodeError,
+            KeyError,
+            TypeError,
+            RecursionError,
+        ) as exc:
+            # Same rationale as fetch_component_languages: a malformed or
+            # adversarial response shouldn't crash with a raw traceback.
+            raise WeblateApiError(
+                f"Weblate returned an unexpected response from {url}: {exc}"
+            ) from exc
     return units
 
 
