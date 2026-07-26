@@ -1,7 +1,7 @@
 name: 'Weblate Quality Checks to SARIF'
 description: >-
-  Fetch strings flagged by Weblate's translation quality checks and convert
-  them into a SARIF file, ready to upload to GitHub Code Scanning.
+  Convert strings flagged by Weblate's translation quality checks into a
+  SARIF file for GitHub Code Scanning.
 author: 'e2jk'
 branding:
   icon: 'check-circle'
