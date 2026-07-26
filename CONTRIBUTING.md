@@ -9,11 +9,16 @@ Open an issue. For security vulnerabilities, follow [SECURITY.md](SECURITY.md).
 The shipped script (`weblate_checks_to_sarif.py`) itself has no dependencies
 beyond the Python standard library — but working on this repo (linting,
 type-checking, security scanning, running tests) uses a handful of dev-only
-tools, kept separate in `requirements-dev.txt`:
+tools, kept separate in `requirements-dev.txt`. That file is hash-pinned
+(including transitive dependencies, via `pip-compile --generate-hashes` —
+see the comment at its top to regenerate it) so `pip install --require-hashes`
+verifies every package against a known-good hash — this is what satisfies
+OpenSSF Scorecard's `Pinned-Dependencies` check; Dependabot bumps versions
+and hashes in place, no separate `.in` source file to keep in sync:
 
 ```bash
 python -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pip install --require-hashes -r requirements-dev.txt
 
 .venv/bin/ruff check .                                      # lint
 .venv/bin/ruff format .                                      # auto-format
