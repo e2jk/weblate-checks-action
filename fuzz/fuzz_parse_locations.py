@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Emilien Klein
 """Fuzz `_parse_locations`, which parses Weblate's comma-separated
 `location` field ("file:line, file2:line2, ...") from arbitrary API
 responses."""

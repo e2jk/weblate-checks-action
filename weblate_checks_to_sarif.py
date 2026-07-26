@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Emilien Klein
 """
 Fetch strings flagged by Weblate quality checks and convert them to SARIF 2.1.0.
 
