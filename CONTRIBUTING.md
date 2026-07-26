@@ -35,6 +35,15 @@ python -m venv .venv
 `.github/workflows/ci.yml`. Tests mock all network calls — no live Weblate
 instance is contacted.
 
+### Testing policy
+
+New or changed functionality must come with tests that cover it — this
+project enforces 100% statement coverage
+(`pytest --cov-fail-under=100`) in both CI (`ci.yml`) and the pre-push
+hook; a change that drops coverage below 100% fails both. Coverage isn't a
+substitute for reviewing test quality — a change still needs tests that
+actually exercise the new/changed behavior, not just execute the lines.
+
 ### Fuzzing
 
 `fuzz/` has [Atheris](https://github.com/google/atheris) harnesses for the
