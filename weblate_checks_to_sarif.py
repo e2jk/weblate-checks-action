@@ -248,7 +248,7 @@ def _parse_locations(location_field: str) -> list[tuple[str, int | None]]:
         if not token:
             continue
         uri, sep, line_str = token.rpartition(":")
-        if sep and line_str.isdigit():
+        if uri and sep and line_str.isdigit():
             locations.append((uri, int(line_str)))
         else:
             locations.append((token, None))

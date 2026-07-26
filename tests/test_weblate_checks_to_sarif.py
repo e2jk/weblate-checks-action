@@ -39,6 +39,10 @@ def test_slugify(name, expected):
         ),
         ("app/templates/foo.html", [("app/templates/foo.html", None)]),
         (" , app/templates/foo.html:5, ", [("app/templates/foo.html", 5)]),
+        # A token that's just ":5" rpartitions to an empty uri — must not
+        # produce a location with an empty artifactLocation.uri; falls back
+        # to treating the whole token as an opaque (unparsed) uri instead.
+        (":5", [(":5", None)]),
     ],
 )
 def test_parse_locations(location, expected):
