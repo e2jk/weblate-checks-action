@@ -51,11 +51,11 @@ functions that handle data from an external/untrusted source (HTML scraped
 from Weblate, the `location` field from its API, a `--weblate-url`/`web_url`
 that could point anywhere, the JSON body of API responses): `scrape_checks`'s
 HTML parsing, `_parse_locations`, `_slugify`, `_fetch`'s URL-scheme
-validation, and `fetch_component_languages`'s handling of the Weblate API's
-JSON response (network calls are stubbed out in the last two harnesses —
-they only exercise the scheme guard / the response-parsing path, never make
-a real request). Same technique as OpenHangar's `fuzz/`, adapted to this
-repo's single-module layout.
+validation, and `fetch_component_languages`'s/`fetch_flagged_units`'s
+handling of the Weblate API's JSON response (network calls are stubbed out
+in the last three harnesses — they only exercise the scheme guard / the
+response-parsing path, never make a real request). Same technique as
+OpenHangar's `fuzz/`, adapted to this repo's single-module layout.
 
 Atheris is Linux-only (no macOS/Windows wheels), so it's kept out of
 `requirements-dev.txt` in a separate hash-pinned `requirements-fuzz.txt`:
