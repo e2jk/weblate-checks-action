@@ -127,6 +127,15 @@ changed what a consumer would see.
    first-publish steps), this is also what pushes the update to the
    Marketplace listing.
 
+Publishing the release automatically triggers
+`.github/workflows/release-sign.yml`, which generates an SBOM, signs it
+with `cosign` (keyless — no key material to manage; see the workflow's own
+comments), attests SLSA provenance, and attaches all three as release
+assets. Nothing further to do — this is what satisfies OpenSSF Scorecard's
+`Signed-Releases` check. To backfill signing on a release that predates
+this workflow (or to re-run it), trigger it manually:
+`gh workflow run "Sign release artifacts" -f tag=vX.Y.Z`.
+
 Force-pushing a moved tag is a rewrite of published history that every
 `@v1` consumer immediately picks up — this is repo-owner-only territory
 (see `scripts/ship.sh` above), not something to automate away.
