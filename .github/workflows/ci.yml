@@ -13,6 +13,16 @@ concurrency:
 jobs:
   lint-and-test:
     name: Lint, type-check, and test
+    # Skipped only for a push to ship/a bot branch or to main — those pushes
+    # do no CI work at all under the current design: a push to ship just
+    # gets a PR opened (auto-pr-merge.yml) or, for Dependabot, the
+    # platform's own automerge flow, and the pull_request event that
+    # follows is where this actually runs; a push to main lands content a
+    # PR already fully tested, so it'd be a pure no-op re-run of the same
+    # commit (rebase-only merges preserve the SHA). Every other trigger
+    # (any pull_request, a push to some other branch) runs this for real.
+    if: |
+      !(github.event_name == 'push' && (github.ref == 'refs/heads/ship' || startsWith(github.ref, 'refs/heads/dependabot/') || github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
