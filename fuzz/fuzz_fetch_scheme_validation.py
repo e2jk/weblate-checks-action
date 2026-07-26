@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Emilien Klein
 """Fuzz `_fetch`'s URL-scheme validation — the only thing standing between
 a malicious/misconfigured `--weblate-url` (or an API-echoed `web_url`) and
 urlopen() reading a local file:// path or similar. Network I/O is stubbed

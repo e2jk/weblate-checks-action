@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Emilien Klein
 import json
 import urllib.error
 from unittest.mock import MagicMock, patch

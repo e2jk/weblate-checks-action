@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Emilien Klein
 # scripts/ship.sh — land your local work on main.
 #
 # Rebases the current branch onto the latest origin/main — any commits from

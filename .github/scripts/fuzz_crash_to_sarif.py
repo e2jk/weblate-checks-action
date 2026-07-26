@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Emilien Klein
 """Convert an Atheris crash reproduction log to SARIF 2.1.0 for GitHub
 Security tab upload — or, with --clean, produce an empty-results SARIF for
 a harness that found nothing this run.

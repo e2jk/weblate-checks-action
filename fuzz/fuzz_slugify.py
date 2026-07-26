@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Emilien Klein
 """Fuzz `_slugify`, which turns a Weblate check name into a SARIF rule ID."""
 
 import sys

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 Emilien Klein
 """Fuzz the HTML "Things to check" panel parser used to extract Weblate
 check names/descriptions from a scraped translate page."""
 
