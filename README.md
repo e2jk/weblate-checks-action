@@ -32,16 +32,6 @@ This action was originally developed and proven out inside
 there for a real-world consumer — before being split out into this
 standalone repository so other projects can use it too.
 
-## If you've never written a GitHub Action before
-
-A GitHub Action like this one is just a packaged, reusable step for a
-workflow. `action.yml` is its manifest (what inputs it takes, what it
-outputs, what it runs); `weblate_checks_to_sarif.py` is the actual logic.
-This one is a "composite" action — it just runs a Python script, no Docker
-image or JavaScript runtime involved. You use it by adding a `uses:` step to
-a `.github/workflows/*.yml` file in *your own* repository — you don't copy
-any files from here into your project.
-
 ## Quick start
 
 Add a workflow like this to your repository (e.g.
