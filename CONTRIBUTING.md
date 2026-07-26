@@ -49,10 +49,14 @@ pin (no network calls otherwise) with `bash .githooks/pre-push --update`.
 
 ## Landing changes on main
 
-`main` is branch-protected: no direct pushes (`enforce_admins` is on, so
-this applies to the repo owner too), a linear history only (no merge
-commits — matches the merge-button setting, which allows rebase-merge
-only), and the `Lint, type-check, and test` status check must pass on an
+`main` is protected by a repository ruleset (not classic branch
+protection — the default `GITHUB_TOKEN` can't read classic protection
+settings, which broke OpenSSF Scorecard's own `Branch-Protection` check the
+first time this repo tried that route; a ruleset avoids the problem and is
+what OpenHangar, this repo's parent project, already uses): no direct
+pushes, not even for the repo owner (`bypass_actors: []`), rebase-only
+merges (`allowed_merge_methods: ["rebase"]`, so no merge commits ever land),
+and the `Lint, type-check, and test` status check must pass on an
 up-to-date branch before anything merges. There are two ways a change
 reaches `main`, and they're deliberately asymmetric:
 
