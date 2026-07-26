@@ -93,7 +93,10 @@ CI_YML="$REPO_ROOT/.github/workflows/ci.yml"
 # no network calls — "are you in sync with what CI actually runs", not "is
 # there a newer upstream release". ───────────────────────────────────────────
 _pinned_pip_version() {
-  grep -E "^$1==" "$DEV_TXT" 2>/dev/null | head -1 | cut -d= -f3
+  # requirements-dev.txt is hash-pinned: each entry is `pkg==1.2.3 \` followed
+  # by indented --hash lines, so strip the trailing backslash/whitespace that
+  # a plain `cut -d= -f3` would otherwise leave stuck to the version.
+  grep -E "^$1==" "$DEV_TXT" 2>/dev/null | head -1 | cut -d= -f3 | sed 's/[[:space:]\\]*$//'
 }
 
 _installed_pip_version() {
@@ -117,8 +120,8 @@ fi
 
 if $UPDATE_MODE; then
   echo "[pre-push --update] Syncing local tooling to the versions this repo pins..."
-  echo "[pre-push --update] pip install -r requirements-dev.txt"
-  "$REPO_ROOT/.venv/bin/pip" install --quiet -r "$DEV_TXT"
+  echo "[pre-push --update] pip install --require-hashes -r requirements-dev.txt"
+  "$REPO_ROOT/.venv/bin/pip" install --quiet --require-hashes -r "$DEV_TXT"
 
   AL_VERSION="$(_pinned_actionlint_version)"
   AL_SHA="$(_pinned_actionlint_sha256)"
