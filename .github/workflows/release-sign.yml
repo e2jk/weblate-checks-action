@@ -1,0 +1,92 @@
+name: Sign release artifacts
+
+# Generates a signed SBOM (CycloneDX + Sigstore signature + SLSA
+# provenance) and attaches it to the GitHub Release, satisfying OpenSSF
+# Scorecard's Signed-Releases check. Keyless signing via cosign + this
+# workflow run's own GitHub OIDC token (Fulcio/Rekor) -- no developer-held
+# key material involved, so there's nothing to provision or share across
+# machines/repos. Same recipe as OpenHangar's ci.yml, minus the Docker
+# image signing step this repo has no equivalent of (it ships as source,
+# not a container).
+#
+# Triggered by release publication (covers `gh release create` and the
+# GitHub UI) and manually via workflow_dispatch, e.g. to backfill an
+# already-published release that predates this workflow.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to sign (e.g. v1.0.0)'
+        required: true
+
+permissions: read-all  # zizmor: ignore[excessive-permissions] intentional: workflow default is read-only, the job below opts into exactly the write scopes it needs
+
+concurrency:
+  group: release-sign-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    name: Sign SBOM and attach to release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write       # gh release upload + dependency-snapshot submission
+      id-token: write       # OIDC token for cosign keyless signing + attestations
+      attestations: write   # attest-build-provenance
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+          ref: ${{ env.TAG }}
+
+      - name: Generate SBOM (CycloneDX) and submit dependency snapshot
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom-${{ env.TAG }}.cyclonedx.json
+          upload-artifact: false
+          dependency-snapshot: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign SBOM with cosign (keyless, Sigstore bundle)
+        run: |
+          cosign sign-blob --yes \
+            --bundle "sbom-${TAG}.cyclonedx.json.sigstore.json" \
+            "sbom-${TAG}.cyclonedx.json"
+
+      - name: Attest SBOM provenance (SLSA)
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+        with:
+          subject-path: sbom-${{ env.TAG }}.cyclonedx.json
+
+      - name: Download SBOM provenance bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          # gh attestation download writes a file named after the artifact
+          # digest — snapshot existing .jsonl files, run the download, then
+          # find the new one, same technique as OpenHangar's ci.yml.
+          find . -maxdepth 1 -name '*.jsonl' | sort > /tmp/before.txt
+          gh attestation download "sbom-${TAG}.cyclonedx.json" --repo "${REPO}"
+          find . -maxdepth 1 -name '*.jsonl' | sort > /tmp/after.txt
+          BUNDLE=$(comm -13 /tmp/before.txt /tmp/after.txt | head -1)
+          mv "$BUNDLE" "sbom-${TAG}.cyclonedx.json.intoto.jsonl"
+
+      - name: Attach signed SBOM to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${TAG}" --clobber \
+            "sbom-${TAG}.cyclonedx.json#SBOM (CycloneDX JSON)" \
+            "sbom-${TAG}.cyclonedx.json.sigstore.json#SBOM signature (Sigstore)" \
+            "sbom-${TAG}.cyclonedx.json.intoto.jsonl#SBOM provenance (SLSA)"
