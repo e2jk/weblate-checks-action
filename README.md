@@ -3,6 +3,7 @@
 [![CI](https://github.com/e2jk/weblate-checks-action/actions/workflows/ci.yml/badge.svg)](https://github.com/e2jk/weblate-checks-action/actions/workflows/ci.yml)
 [![Fuzzing](https://github.com/e2jk/weblate-checks-action/actions/workflows/fuzzing.yml/badge.svg)](https://github.com/e2jk/weblate-checks-action/actions/workflows/fuzzing.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/e2jk/weblate-checks-action/badge)](https://securityscorecards.dev/viewer/?uri=github.com/e2jk/weblate-checks-action)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13829/badge)](https://www.bestpractices.dev/projects/13829)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/e2jk/weblate-checks-action/blob/main/LICENSE)
 [![Last commit](https://img.shields.io/github/last-commit/e2jk/weblate-checks-action)](https://github.com/e2jk/weblate-checks-action/commits/main)
 
