@@ -47,6 +47,7 @@ jobs:
           - fuzz_slugify
           - fuzz_fetch_scheme_validation
           - fuzz_component_languages_response
+          - fuzz_flagged_units_response
     env:
       # Routed through a shell env var rather than interpolated directly
       # into run: blocks (${{ matrix.harness }} inline in a script is a
