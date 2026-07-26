@@ -1,0 +1,388 @@
+{
+  "name": "weblate-checks-action",
+  "description": "GitHub Action that converts Weblate translation quality-check failures into a SARIF file for GitHub Code Scanning.",
+  "homepage_url": "https://github.com/e2jk/weblate-checks-action",
+  "repo_url": "https://github.com/e2jk/weblate-checks-action",
+  "license": "MIT",
+
+  "description_good_status": "Met",
+  "description_good_justification": "README opens with a one-sentence description of what the action does and why. https://github.com/e2jk/weblate-checks-action/blob/main/README.md",
+
+  "interact_status": "Met",
+  "interact_justification": "README covers quick start/usage; CONTRIBUTING.md covers how to get involved. https://github.com/e2jk/weblate-checks-action/blob/main/CONTRIBUTING.md",
+
+  "contribution_status": "Met",
+  "contribution_justification": "https://github.com/e2jk/weblate-checks-action/blob/main/CONTRIBUTING.md",
+
+  "contribution_requirements_status": "Met",
+  "contribution_requirements_justification": "https://github.com/e2jk/weblate-checks-action/blob/main/CONTRIBUTING.md#pull-requests",
+
+  "floss_license_status": "Met",
+  "floss_license_justification": "MIT license, OSI-approved. https://github.com/e2jk/weblate-checks-action/blob/main/LICENSE",
+
+  "floss_license_osi_status": "Met",
+  "floss_license_osi_justification": "MIT is on the OSI-approved license list.",
+
+  "license_location_status": "Met",
+  "license_location_justification": "LICENSE file in the repo root. https://github.com/e2jk/weblate-checks-action/blob/main/LICENSE",
+
+  "documentation_basics_status": "Met",
+  "documentation_basics_justification": "README covers quick start, inputs/outputs, severity mapping, and local usage. https://github.com/e2jk/weblate-checks-action/blob/main/README.md",
+
+  "documentation_interface_status": "Met",
+  "documentation_interface_justification": "The action's interface is its inputs/outputs, documented in both action.yml and the README's Inputs/Outputs tables. https://github.com/e2jk/weblate-checks-action/blob/main/action.yml",
+
+  "sites_https_status": "Met",
+  "sites_https_justification": "Project is hosted on GitHub (https only); the tool's own network client (_fetch) validates and requires an http(s) scheme before every request.",
+
+  "discussion_status": "Met",
+  "discussion_justification": "GitHub issues and pull requests support discussion.",
+
+  "english_status": "Met",
+  "english_justification": "All documentation and code comments are in English.",
+
+  "maintained_status": "Met",
+  "maintained_justification": "Actively developed; https://github.com/e2jk/weblate-checks-action/commits/main",
+
+  "repo_public_status": "Met",
+  "repo_public_justification": "Public GitHub repository.",
+
+  "repo_track_status": "Met",
+  "repo_track_justification": "Uses git.",
+
+  "repo_interim_status": "Met",
+  "repo_interim_justification": "Interim versions are committed to git, not just tagged releases.",
+
+  "repo_distributed_status": "Met",
+  "repo_distributed_justification": "Uses git, which is distributed.",
+
+  "version_unique_status": "Met",
+  "version_unique_justification": "Each release gets a unique vX.Y.Z git tag.",
+
+  "version_semver_status": "Met",
+  "version_semver_justification": "Releases follow semver (see CONTRIBUTING.md § Releasing new versions). https://github.com/e2jk/weblate-checks-action/blob/main/CONTRIBUTING.md#releasing-new-versions",
+
+  "version_tags_status": "Met",
+  "version_tags_justification": "git tags (vX.Y.Z, plus a floating v1) identify releases.",
+
+  "release_notes_status": "Met",
+  "release_notes_justification": "GitHub Releases with generated notes, e.g. https://github.com/e2jk/weblate-checks-action/releases/tag/v1.0.4",
+
+  "release_notes_vulns_status": "N/A",
+  "release_notes_vulns_justification": "No vulnerabilities have been reported or fixed yet (new project), so there's nothing to have documented in release notes so far.",
+
+  "report_process_status": "Met",
+  "report_process_justification": "\"Open an issue\" documented in CONTRIBUTING.md. https://github.com/e2jk/weblate-checks-action/blob/main/CONTRIBUTING.md#bugs-and-feature-requests",
+
+  "report_tracker_status": "Met",
+  "report_tracker_justification": "GitHub issue tracker. https://github.com/e2jk/weblate-checks-action/issues",
+
+  "report_responses_status": "Met",
+  "report_responses_justification": "No bug reports filed yet (new repo) — vacuously true; actively monitored by the maintainer.",
+
+  "enhancement_responses_status": "Met",
+  "enhancement_responses_justification": "No enhancement requests filed yet (new repo) — vacuously true.",
+
+  "report_archive_status": "Met",
+  "report_archive_justification": "GitHub issue tracker keeps a public, searchable archive. https://github.com/e2jk/weblate-checks-action/issues?q=is%3Aissue",
+
+  "vulnerability_report_process_status": "Met",
+  "vulnerability_report_process_justification": "https://github.com/e2jk/weblate-checks-action/blob/main/SECURITY.md",
+
+  "vulnerability_report_private_status": "Met",
+  "vulnerability_report_private_justification": "GitHub Security Advisories (private) is the primary channel, per SECURITY.md.",
+
+  "vulnerability_report_response_status": "Met",
+  "vulnerability_report_response_justification": "SECURITY.md commits to acknowledging within 5 business days and a fix within 90 days.",
+
+  "build_status": "N/A",
+  "build_justification": "Pure Python stdlib script run directly by the interpreter — no compile/build step.",
+
+  "build_common_tools_status": "N/A",
+  "build_common_tools_justification": "No build step (interpreted language).",
+
+  "build_floss_tools_status": "N/A",
+  "build_floss_tools_justification": "No build step (interpreted language).",
+
+  "test_status": "Met",
+  "test_justification": "pytest suite mocking all network calls. https://github.com/e2jk/weblate-checks-action/blob/main/tests/test_weblate_checks_to_sarif.py",
+
+  "test_invocation_status": "Met",
+  "test_invocation_justification": "`pytest tests/` — documented in CONTRIBUTING.md.",
+
+  "test_most_status": "Met",
+  "test_most_justification": "100% statement coverage on the main module, enforced via `--cov-fail-under=100` in both CI and the pre-push hook. https://github.com/e2jk/weblate-checks-action/blob/main/.github/workflows/ci.yml",
+
+  "test_continuous_integration_status": "Met",
+  "test_continuous_integration_justification": "ci.yml runs the full suite on every push and pull_request. https://github.com/e2jk/weblate-checks-action/blob/main/.github/workflows/ci.yml",
+
+  "test_policy_status": "Met",
+  "test_policy_justification": "Documented in CONTRIBUTING.md's Testing policy section and mechanically enforced: 100% statement coverage required via the CI status check and the local pre-push hook, both blocking. https://github.com/e2jk/weblate-checks-action/blob/main/CONTRIBUTING.md#testing-policy",
+
+  "tests_are_added_status": "Met",
+  "tests_are_added_justification": "Same enforcement as test_policy — a change that doesn't add tests for new/changed functionality drops coverage below the enforced 100% floor and fails CI/pre-push.",
+
+  "tests_documented_added_status": "Met",
+  "tests_documented_added_justification": "CONTRIBUTING.md's Testing policy section states the requirement explicitly. https://github.com/e2jk/weblate-checks-action/blob/main/CONTRIBUTING.md#testing-policy",
+
+  "warnings_status": "Met",
+  "warnings_justification": "ruff (lint), mypy --strict, and bandit are all run as compiler/linter-style warning flags. https://github.com/e2jk/weblate-checks-action/blob/main/.github/workflows/ci.yml",
+
+  "warnings_fixed_status": "Met",
+  "warnings_fixed_justification": "All three (ruff, mypy, bandit) are required CI steps — any warning blocks merge via the branch ruleset's required status check.",
+
+  "warnings_strict_status": "Met",
+  "warnings_strict_justification": "mypy runs with strict = true (pyproject.toml); bandit runs at -ll (medium+ severity); ruff uses its default modern rule set.",
+
+  "know_secure_design_status": "Met",
+  "know_secure_design_justification": "Evidenced by the project's own threat model in SECURITY.md's Scope section and the deliberate URL-scheme validation in _fetch (defense against SSRF via a malicious/misconfigured --weblate-url or an API-echoed web_url). https://github.com/e2jk/weblate-checks-action/blob/main/SECURITY.md",
+
+  "know_common_errors_status": "Met",
+  "know_common_errors_justification": "bandit, CodeQL, and zizmor are all run specifically to catch common vulnerability classes (injection, SSRF, unsafe deserialization, workflow injection); the maintainer authored the SSRF-specific scheme-validation guard in _fetch by hand, not just via tooling.",
+
+  "crypto_published_status": "N/A",
+  "crypto_published_justification": "The tool implements no cryptography of its own — network requests rely on Python's stdlib TLS handling; there's no custom crypto algorithm to publish.",
+
+  "crypto_call_status": "N/A",
+  "crypto_call_justification": "No cryptographic functionality is implemented or invoked beyond stdlib TLS for https:// requests.",
+
+  "crypto_floss_status": "N/A",
+  "crypto_floss_justification": "No cryptographic functionality implemented or invoked.",
+
+  "crypto_keylength_status": "N/A",
+  "crypto_keylength_justification": "No cryptographic keys are generated or managed by this tool.",
+
+  "crypto_working_status": "N/A",
+  "crypto_working_justification": "No cryptographic functionality implemented or invoked.",
+
+  "crypto_weaknesses_status": "N/A",
+  "crypto_weaknesses_justification": "No cryptographic functionality implemented or invoked.",
+
+  "crypto_pfs_status": "N/A",
+  "crypto_pfs_justification": "No persistent network sessions of its own to apply PFS to — relies on stdlib TLS defaults for the individual https:// requests it makes.",
+
+  "crypto_password_storage_status": "N/A",
+  "crypto_password_storage_justification": "The tool stores no passwords. The Weblate API token is passed through as an input/env var and never written to disk by this tool.",
+
+  "crypto_random_status": "N/A",
+  "crypto_random_justification": "No security-sensitive randomness is used anywhere in the codebase (grepped: no use of the random module at all).",
+
+  "delivery_mitm_status": "Met",
+  "delivery_mitm_justification": "All network access (Weblate API and scraped translate pages, plus the repo itself) is over https; _fetch validates the URL scheme is http(s) before every request.",
+
+  "delivery_unsigned_status": "Met",
+  "delivery_unsigned_justification": "Delivered via GitHub Releases over https, with the SBOM cryptographically signed via cosign (keyless/Sigstore) and SLSA provenance attested. https://github.com/e2jk/weblate-checks-action/blob/main/.github/workflows/release-sign.yml",
+
+  "vulnerabilities_fixed_60_days_status": "Met",
+  "vulnerabilities_fixed_60_days_justification": "No vulnerabilities have ever been publicly reported against this project (first release 2026-07-26) — vacuously true.",
+
+  "vulnerabilities_critical_fixed_status": "Met",
+  "vulnerabilities_critical_fixed_justification": "No vulnerabilities have ever been publicly reported against this project — vacuously true.",
+
+  "no_leaked_credentials_status": "Met",
+  "no_leaked_credentials_justification": "GitHub secret scanning is enabled by default on public repos; no credentials are committed — the Weblate API token is only ever read from an input/env var, never logged or written to the SARIF output.",
+
+  "static_analysis_status": "Met",
+  "static_analysis_justification": "bandit, mypy --strict, zizmor, and CodeQL. https://github.com/e2jk/weblate-checks-action/blob/main/.github/workflows/ci.yml and https://github.com/e2jk/weblate-checks-action/blob/main/.github/workflows/codeql.yml",
+
+  "static_analysis_common_vulnerabilities_status": "Met",
+  "static_analysis_common_vulnerabilities_justification": "CodeQL and bandit both specifically target common vulnerability classes (injection, SSRF, unsafe deserialization, etc.).",
+
+  "static_analysis_fixed_status": "Met",
+  "static_analysis_fixed_justification": "bandit/mypy/zizmor are required CI steps that block merge (via the branch ruleset's required status check); CodeQL findings go to the Security tab and are triaged.",
+
+  "static_analysis_often_status": "Met",
+  "static_analysis_often_justification": "ci.yml (bandit/mypy/zizmor) runs on every push/PR; codeql.yml additionally runs on a weekly schedule.",
+
+  "dynamic_analysis_status": "Met",
+  "dynamic_analysis_justification": "Atheris fuzz harnesses run after every merge to main (light budget) plus a deeper weekly run. https://github.com/e2jk/weblate-checks-action/blob/main/.github/workflows/fuzzing.yml",
+
+  "dynamic_analysis_unsafe_status": "N/A",
+  "dynamic_analysis_unsafe_justification": "Pure Python (memory-safe language) — no memory-unsafe code paths for tools like ASan/UBSan to apply to.",
+
+  "dynamic_analysis_enable_assertions_status": "Met",
+  "dynamic_analysis_enable_assertions_justification": "Tests and fuzz harnesses run under a plain (non `-O`-optimized) Python interpreter, so assertions are never stripped; the codebase itself doesn't rely on bare `assert` for validation (grepped: none present).",
+
+  "dynamic_analysis_fixed_status": "Met",
+  "dynamic_analysis_fixed_justification": "A fuzz crash uploads a SARIF result to the Security tab and fails the job; every finding is triaged and fixed or the corpus/harness adjusted before being considered resolved.",
+
+  "dco_status": "Unmet",
+  "dco_justification": "No Developer Certificate of Origin sign-off is required on commits/PRs.",
+
+  "governance_status": "Met",
+  "governance_justification": "GOVERNANCE.md documents the solo-maintainer model and decision-making process. https://github.com/e2jk/weblate-checks-action/blob/main/GOVERNANCE.md",
+
+  "code_of_conduct_status": "Met",
+  "code_of_conduct_justification": "Contributor Covenant v2.1. https://github.com/e2jk/weblate-checks-action/blob/main/CODE_OF_CONDUCT.md",
+
+  "roles_responsibilities_status": "Met",
+  "roles_responsibilities_justification": "GOVERNANCE.md's \"Roles and responsibilities\" section. https://github.com/e2jk/weblate-checks-action/blob/main/GOVERNANCE.md#roles-and-responsibilities",
+
+  "access_continuity_status": "Unmet",
+  "access_continuity_justification": "No documented continuity plan (e.g. a backup admin/co-maintainer) if the primary maintainer becomes unavailable.",
+
+  "bus_factor_status": "Unmet",
+  "bus_factor_justification": "Single maintainer; the project would stall without them.",
+
+  "documentation_roadmap_status": "Unmet",
+  "documentation_roadmap_justification": "BACKLOG.md exists but is a short punch-list of one-time admin/deferred items, not a forward-looking feature roadmap.",
+
+  "documentation_architecture_status": "Met",
+  "documentation_architecture_justification": "AGENTS.md's \"Architecture / data flow\" section. https://github.com/e2jk/weblate-checks-action/blob/main/AGENTS.md",
+
+  "documentation_security_status": "Met",
+  "documentation_security_justification": "SECURITY.md plus AGENTS.md's \"Error handling contract\" and \"_fetch is the sole network chokepoint\" sections describe the security-relevant design.",
+
+  "documentation_quick_start_status": "Met",
+  "documentation_quick_start_justification": "README \"Quick start\" section. https://github.com/e2jk/weblate-checks-action/blob/main/README.md#quick-start",
+
+  "documentation_current_status": "Met",
+  "documentation_current_justification": "Docs are updated in the same change as the code/behavior they describe.",
+
+  "documentation_achievements_status": "Met",
+  "documentation_achievements_justification": "CI/Fuzzing/Scorecard/license/last-commit badges in the README. https://github.com/e2jk/weblate-checks-action/blob/main/README.md",
+
+  "accessibility_best_practices_status": "N/A",
+  "accessibility_best_practices_justification": "No user-facing UI/website beyond the GitHub repo itself.",
+
+  "internationalization_status": "N/A",
+  "internationalization_justification": "A CLI/Action with no UI strings of its own to translate (ironic, given the tool scans *other* projects' translations).",
+
+  "sites_password_security_status": "N/A",
+  "sites_password_security_justification": "No site/service with passwords.",
+
+  "maintenance_or_update_status": "N/A",
+  "maintenance_or_update_justification": "Only one major version (v1) has ever existed — nothing to retroactively maintain yet.",
+
+  "vulnerability_report_credit_status": "N/A",
+  "vulnerability_report_credit_justification": "No vulnerability has ever been reported, so no reporter has needed crediting yet.",
+
+  "vulnerability_response_process_status": "Met",
+  "vulnerability_response_process_justification": "SECURITY.md commits to acknowledging within 5 business days and a fix within 90 days.",
+
+  "coding_standards_status": "Met",
+  "coding_standards_justification": "AGENTS.md's \"Conventions\" section (strict mypy, ruff lint/format, Conventional Commits, SHA-pinned Actions).",
+
+  "coding_standards_enforced_status": "Met",
+  "coding_standards_enforced_justification": "ruff + mypy --strict are required CI steps and pre-push hook checks.",
+
+  "build_standard_variables_status": "N/A",
+  "build_standard_variables_justification": "No build step (interpreted language).",
+
+  "build_preserve_debug_status": "N/A",
+  "build_preserve_debug_justification": "No build step (interpreted language).",
+
+  "build_non_recursive_status": "N/A",
+  "build_non_recursive_justification": "No build step (interpreted language).",
+
+  "build_repeatable_status": "N/A",
+  "build_repeatable_justification": "No build step (interpreted language).",
+
+  "installation_common_status": "Met",
+  "installation_common_justification": "Installed the standard GitHub Actions way — `uses: e2jk/weblate-checks-action@v1` in a workflow, per the README quick start.",
+
+  "installation_standard_variables_status": "N/A",
+  "installation_standard_variables_justification": "GitHub Actions have no installation-time variables like DESTDIR to honor.",
+
+  "installation_development_quick_status": "Met",
+  "installation_development_quick_justification": "3-command venv setup in CONTRIBUTING.md's Development setup section.",
+
+  "external_dependencies_status": "Met",
+  "external_dependencies_justification": "Runtime: zero (Python stdlib only). Dev/test: requirements-dev.txt and requirements-fuzz.txt, both hash-pinned.",
+
+  "dependency_monitoring_status": "Met",
+  "dependency_monitoring_justification": "Dependabot (weekly) + pip-audit in CI. https://github.com/e2jk/weblate-checks-action/blob/main/.github/dependabot.yml",
+
+  "updateable_reused_components_status": "Met",
+  "updateable_reused_components_justification": "pip-managed dependencies, hash-pinned; nothing vendored.",
+
+  "interfaces_current_status": "Met",
+  "interfaces_current_justification": "Dependabot keeps dev/test dependencies current weekly; the runtime script itself has no third-party dependencies to go stale.",
+
+  "automated_integration_testing_status": "Met",
+  "automated_integration_testing_justification": "ci.yml runs the full suite on every push/PR.",
+
+  "regression_tests_added50_status": "Met",
+  "regression_tests_added50_justification": "No bugs have been reported/fixed yet (new project) — vacuously true; the enforced 100% coverage floor means any future fix would need a covering test anyway.",
+
+  "test_statement_coverage80_status": "Met",
+  "test_statement_coverage80_justification": "100% statement coverage, enforced via --cov-fail-under=100.",
+
+  "test_policy_mandated_status": "Met",
+  "test_policy_mandated_justification": "CONTRIBUTING.md's Testing policy section, mechanically enforced (not just suggested) via the CI/pre-push coverage gate. https://github.com/e2jk/weblate-checks-action/blob/main/CONTRIBUTING.md#testing-policy",
+
+  "implement_secure_design_status": "Met",
+  "implement_secure_design_justification": "AGENTS.md documents the specific secure-design decisions in prose (e.g. \"_fetch is the sole network chokepoint\" — single point of scheme validation rather than scattered checks).",
+
+  "crypto_algorithm_agility_status": "N/A",
+  "crypto_algorithm_agility_justification": "No cryptographic functionality implemented or invoked.",
+
+  "crypto_credential_agility_status": "N/A",
+  "crypto_credential_agility_justification": "The Weblate API token is Weblate's credential, not ours — passed through via input/env var, never persisted by this tool.",
+
+  "crypto_used_network_status": "Met",
+  "crypto_used_network_justification": "All network access (Weblate API, scraped translate pages) is https-only.",
+
+  "crypto_tls12_status": "Met",
+  "crypto_tls12_justification": "Relies on Python's default SSL context via urllib, which enforces a modern minimum TLS version.",
+
+  "crypto_certificate_verification_status": "Met",
+  "crypto_certificate_verification_justification": "urllib.request.urlopen with the default SSL context verifies certificates; no verify-disabling code anywhere.",
+
+  "crypto_verification_private_status": "Met",
+  "crypto_verification_private_justification": "TLS handshake and certificate verification complete before the Authorization header (token) is ever sent, per standard TLS/HTTP layering.",
+
+  "signed_releases_status": "Met",
+  "signed_releases_justification": "SBOM signed with cosign (keyless/Sigstore) and SLSA provenance attested, attached to every release. https://github.com/e2jk/weblate-checks-action/blob/main/.github/workflows/release-sign.yml",
+
+  "version_tags_signed_status": "Unmet",
+  "version_tags_signed_justification": "Release tags are annotated (`git tag -a`) but not GPG/Sigstore-signed.",
+
+  "input_validation_status": "Met",
+  "input_validation_justification": "E.g. _fetch's URL-scheme allowlist, _parse_locations's strict isdecimal() check (deliberately not isdigit(), which accepts unparseable Unicode digit variants).",
+
+  "hardening_status": "N/A",
+  "hardening_justification": "Not a network-facing service — no HTTP responses of its own to add security headers to.",
+
+  "assurance_case_status": "Unmet",
+  "assurance_case_justification": "No formal threat model / assurance case document, despite the informal security reasoning captured in SECURITY.md and AGENTS.md.",
+
+  "contributors_unassociated_status": "Unmet",
+  "contributors_unassociated_justification": "All contributions so far are from a single individual/organization.",
+
+  "copyright_per_file_status": "Met",
+  "copyright_per_file_justification": "SPDX-FileCopyrightText headers on every source file (weblate_checks_to_sarif.py, tests/, fuzz/, .github/scripts/, scripts/ship.sh).",
+
+  "license_per_file_status": "Met",
+  "license_per_file_justification": "SPDX-License-Identifier: MIT headers on every source file, same set as copyright_per_file.",
+
+  "small_tasks_status": "?",
+  "small_tasks_justification": null,
+
+  "require_2FA_status": "?",
+  "require_2FA_justification": null,
+
+  "secure_2FA_status": "?",
+  "secure_2FA_justification": null,
+
+  "code_review_standards_status": "Met",
+  "code_review_standards_justification": "CONTRIBUTING.md's \"Landing changes on main\" section documents what review means for external PRs (human review before merge) vs. the owner's own commits (auto-merge by design, since the author already reviewed it by writing it).",
+
+  "two_person_review_status": "Unmet",
+  "two_person_review_justification": "By design, the maintainer's own commits auto-merge without a second reviewer (see CONTRIBUTING.md) — deliberately not two-person review.",
+
+  "build_reproducible_status": "N/A",
+  "build_reproducible_justification": "No build step (interpreted language).",
+
+  "test_statement_coverage90_status": "Met",
+  "test_statement_coverage90_justification": "100% statement coverage.",
+
+  "test_branch_coverage80_status": "Met",
+  "test_branch_coverage80_justification": "100% branch coverage too (measured with `pytest --cov-branch`: 52/52 branches, 0 partial).",
+
+  "hardened_site_status": "?",
+  "hardened_site_justification": null,
+
+  "security_review_status": "Unmet",
+  "security_review_justification": "No independent/external security review has been performed."
+}
