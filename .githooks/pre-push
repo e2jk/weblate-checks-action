@@ -30,7 +30,7 @@ else
 fi
 
 run_step_quiet() {
-  # run_step_quiet [--detail <pattern> | --detail-literal <string>] <label> <cmd...> [-- <clean-cmd...>]
+  # run_step_quiet [--detail <pattern> | --detail-literal <string>]... <label> <cmd...> [-- <clean-cmd...>]
   # Runs a CLI tool whose own success output is noisy, unprefixed, and
   # inconsistently coloured (ruff/mypy/bandit/zizmor/actionlint/pip-audit
   # all differ). Captures stdout+stderr; on success it's discarded in
@@ -41,18 +41,22 @@ run_step_quiet() {
   #   --detail-literal <string>
   #                         appends a value computed by the caller instead of
   #                         extracted from the wrapped command's own output.
-  # On failure "[label] FAILED" prints in red. If a "-- <clean-cmd...>" tail
-  # is given, that's what runs and prints (these tools are fast and rarely
-  # fail, so a second, non-verbose run is cheap) — for a <cmd> whose verbose
-  # flag was only turned on to expose a --detail count, and whose debug
-  # logging would otherwise bury the actual failure. Without "--", the
+  # Either flag can be repeated (e.g. one --detail for a test count, another
+  # for a coverage percentage) — each match is joined with ", " in the order
+  # given. On failure "[label] FAILED" prints in red. If a "-- <clean-cmd...>"
+  # tail is given, that's what runs and prints (these tools are fast and
+  # rarely fail, so a second, non-verbose run is cheap) — for a <cmd> whose
+  # verbose flag was only turned on to expose a --detail count, and whose
+  # debug logging would otherwise bury the actual failure. Without "--", the
   # primary command's own raw output is dumped as-is.
-  local detail_pattern="" detail=""
-  if [ "$1" = "--detail" ]; then
-    detail_pattern="$2"; shift 2
-  elif [ "$1" = "--detail-literal" ]; then
-    detail="$2"; shift 2
-  fi
+  local detail_specs=()
+  while true; do
+    case "$1" in
+      --detail) detail_specs+=("p:$2"); shift 2 ;;
+      --detail-literal) detail_specs+=("l:$2"); shift 2 ;;
+      *) break ;;
+    esac
+  done
   local label="$1"; shift
   local cmd=() clean_cmd=() in_clean=false
   for a in "$@"; do
@@ -65,9 +69,17 @@ run_step_quiet() {
 
   local output
   if output="$("${cmd[@]}" 2>&1)"; then
-    if [ -n "$detail_pattern" ]; then
-      detail="$(echo "$output" | grep -oE "$detail_pattern" | tail -1)"
-    fi
+    local detail="" spec kind val match
+    for spec in "${detail_specs[@]}"; do
+      kind="${spec%%:*}"
+      val="${spec#*:}"
+      if [ "$kind" = "p" ]; then
+        match="$(echo "$output" | grep -oE "$val" | tail -1)"
+      else
+        match="$val"
+      fi
+      [ -n "$match" ] && detail="${detail:+$detail, }$match"
+    done
     echo "${_GREEN}[$label] OK${detail:+ — $detail}${_RESET}"
   else
     FAILED_STEPS+=("$label")
@@ -216,7 +228,7 @@ fi
 # fast enough to always run fresh).
 if [ -x "$PYTHON" ]; then
   echo "[pytest] Running test suite (with coverage)..."
-  run_step_quiet --detail '[0-9]+ passed' "pytest" \
+  run_step_quiet --detail '[0-9]+ passed' --detail 'Total coverage: [0-9.]+%' "pytest" \
     "$PYTHON" -m pytest "$REPO_ROOT/tests/" --cov="$REPO_ROOT" --cov-report=term-missing --cov-fail-under=100 -q
 else
   echo "[pytest] .venv python not found — skipping (run: pip install -r requirements-dev.txt)"
