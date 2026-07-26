@@ -172,10 +172,8 @@ changed what a consumer would see.
    floating tag (`v2`) instead of moving `v1`, so existing `@v1` consumers
    are unaffected until they explicitly opt in.
 4. Create a GitHub Release from the `vX.Y.Z` tag (UI, or
-   `gh release create vX.Y.Z --generate-notes`). Once this repo has been
-   published to the Marketplace (see `BACKLOG.md` for the one-time
-   first-publish steps), this is also what pushes the update to the
-   Marketplace listing.
+   `gh release create vX.Y.Z --generate-notes`). This is also what pushes
+   the update to the Marketplace listing.
 
 Publishing the release automatically triggers
 `.github/workflows/release-sign.yml`, which generates an SBOM, signs it

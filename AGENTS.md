@@ -21,10 +21,9 @@ stdlib-only Python script:
 
 This repo was split out of [OpenHangar](https://github.com/e2jk/OpenHangar),
 which remains the real-world consumer (see its
-`.github/workflows/weblate-i18n-scan.yml`). It has not yet been published to
-the GitHub Marketplace (see `BACKLOG.md` for that and other pending
-one-time/deferred items — check it for outstanding work before assuming a
-task is novel).
+`.github/workflows/weblate-i18n-scan.yml`). It is published to the GitHub
+Marketplace (see `BACKLOG.md` for pending one-time/deferred items — check it
+for outstanding work before assuming a task is novel).
 
 **Working with the human:** implement, fix, test, and document — but you are
 not expected to push code, run destructive git commands, or commit. Propose
