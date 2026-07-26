@@ -2,7 +2,7 @@
 
 ## Bugs and feature requests
 
-Open an issue.
+Open an issue. For security vulnerabilities, follow [SECURITY.md](SECURITY.md).
 
 ## Development setup
 
