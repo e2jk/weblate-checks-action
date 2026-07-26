@@ -32,6 +32,14 @@ jobs:
           results_file: scorecard.sarif
           results_format: sarif
           publish_results: true  # enables the Scorecard badge
+          # The default GITHUB_TOKEN can't read classic branch protection
+          # settings (a GitHub API limitation, not a permissions bug here —
+          # see https://github.com/ossf/scorecard-action/blob/main/docs/authentication/fine-grained-auth-token.md),
+          # so the Branch-Protection check errors out without this: a
+          # fine-grained PAT scoped to this repo with Administration:
+          # Read-only. Falls back to GITHUB_TOKEN if the secret isn't set
+          # (every other check still works; only Branch-Protection degrades).
+          repo_token: ${{ secrets.SCORECARD_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Upload SARIF to GitHub Security tab
         if: always()
