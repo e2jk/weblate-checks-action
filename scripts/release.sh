@@ -63,13 +63,22 @@ case "$STEP" in
       echo "${VERSION} doesn't exist yet — run '$0 ${VERSION} --tag' first." >&2
       exit 1
     fi
+    # Target is TARGET_SHA (a commit), not VERSION (a tag name) — pointing
+    # a tag at another tag's name creates a nested tag (git warns:
+    # "advice.nestedTag"), which would make v1 depend on vX.Y.Z's tag
+    # object continuing to exist instead of standing on its own. -a -m
+    # explicitly on both branches: the existing vX tag (if any) was created
+    # annotated, and `git tag -f` on an already-annotated tag drops you
+    # into $EDITOR pre-filled with its old message instead of just moving
+    # it — deterministic here instead, non-interactive, message matches the
+    # tag name like every other tag in this repo.
     if git rev-parse "${MAJOR}" >/dev/null 2>&1; then
-      echo "Moving existing floating tag ${MAJOR} -> ${VERSION}"
-      git tag -f "${MAJOR}" "${VERSION}"
+      echo "Moving existing floating tag ${MAJOR} -> ${VERSION} (${TARGET_SHA})"
+      git tag -f -a "${MAJOR}" "${TARGET_SHA}" -m "${MAJOR}"
       git push origin "${MAJOR}" --force
     else
       echo "No existing ${MAJOR} tag — creating it fresh (first release of this major line)."
-      git tag "${MAJOR}" "${VERSION}"
+      git tag -a "${MAJOR}" "${TARGET_SHA}" -m "${MAJOR}"
       git push origin "${MAJOR}"
     fi
     ;;
