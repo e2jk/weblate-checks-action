@@ -145,59 +145,50 @@ changed what a consumer would see.
      behavior.
    - **major** (`vX+1.0.0`) — breaking change: removed/renamed input,
      changed default behavior, dropped Python version support, etc.
-2. Tag the released commit on `main` and push the tag — **only after**
-   confirming the commit actually landed on `origin/main`, not before.
-   Landing here always goes through `scripts/ship.sh` -> a PR -> a
-   rebase-merge (see "Landing changes on main" above), and a rebase-merge
-   *rewrites every commit it merges* (new parent, so a new SHA) — the SHA
-   you have locally right after `git commit`, or even right after
-   `scripts/ship.sh` pushes to `ship`, is **not** the SHA that ends up on
-   `main`. Tagging too early tags a commit that's about to become
-   unreachable once the ship branch is deleted post-merge. The safe
-   sequence:
+2. Ship it and wait for the PR to actually merge (watch it land, e.g. `gh pr
+   checks` / `gh pr view --json state`, or just check on GitHub) — **only
+   after** it's landed on `origin/main`, run `scripts/release.sh`, one step
+   at a time:
    ```bash
-   # 1. Ship it and wait for the PR to actually merge (watch it land, e.g.
-   #    `gh pr checks` / `gh pr view --json state`, or just check on GitHub).
-   scripts/ship.sh
-
-   # 2. Only then, fetch and confirm the real post-merge SHA:
-   git fetch origin
-   git log --oneline origin/main -1
-
-   # 3. Tag *that* SHA explicitly (don't rely on local main's HEAD either —
-   #    it can carry stray local-only commits main never received, e.g. a
-   #    rebase-merge dropping an empty commit entirely; see "Verified
-   #    commits" discussion history for a worked example):
-   git tag -a vX.Y.Z <that-sha> -m "vX.Y.Z"
-   git push origin vX.Y.Z
+   scripts/release.sh vX.Y.Z               # dry run: prints origin/main's tip, no changes
+   scripts/release.sh vX.Y.Z --tag         # tags *that* SHA and pushes it
+   scripts/release.sh vX.Y.Z --move-major  # moves (or creates) the floating vX tag
+   scripts/release.sh vX.Y.Z --publish     # gh release create vX.Y.Z --generate-notes
    ```
-3. Move the floating major-version tag (`v1`, `v2`, ...) — the one
-   `uses: e2jk/weblate-checks-action@v1`-style consumers actually pin to —
-   so they pick up the new patch/minor automatically, same convention as
-   `actions/checkout`, `actions/setup-python`, etc.:
-   ```bash
-   git tag -f v1 vX.Y.Z
-   git push origin v1 --force
-   ```
-   Skip this step on a **major** bump — a new major version gets its own new
-   floating tag (`v2`) instead of moving `v1`, so existing `@v1` consumers
-   are unaffected until they explicitly opt in.
-4. Create a GitHub Release from the `vX.Y.Z` tag (UI, or
-   `gh release create vX.Y.Z --generate-notes`). This is also what pushes
-   the update to the Marketplace listing.
+   Each step re-fetches and re-derives `origin/main`'s tip itself rather
+   than trusting local state — landing here always goes through
+   `scripts/ship.sh` -> a PR -> a rebase-merge (see "Landing changes on
+   main" above), and a rebase-merge *rewrites every commit it merges* (new
+   parent, so a new SHA) — the SHA you have locally right after `git
+   commit`, or even right after `scripts/ship.sh` pushes to `ship`, is
+   **not** the SHA that ends up on `main`. Tagging too early tags a commit
+   that's about to become unreachable once the ship branch is deleted
+   post-merge; the script sidesteps this entirely by always reading
+   `origin/main` fresh, never local `HEAD`.
 
-Publishing the release automatically triggers
-`.github/workflows/release-sign.yml`, which generates an SBOM, signs it
-with `cosign` (keyless — no key material to manage; see the workflow's own
-comments), attests SLSA provenance, and attaches all three as release
-assets. Nothing further to do — this is what satisfies OpenSSF Scorecard's
-`Signed-Releases` check. To backfill signing on a release that predates
-this workflow (or to re-run it), trigger it manually:
+   `--move-major` moves the floating major-version tag (`v1`, `v2`, ...) —
+   the one `uses: e2jk/weblate-checks-action@v1`-style consumers actually
+   pin to — so they pick up the new patch/minor automatically, same
+   convention as `actions/checkout`, `actions/setup-python`, etc. On a
+   **major** bump there's no existing `vX` tag yet, so the script creates it
+   fresh instead of force-moving anything — existing `@v1` consumers stay
+   put until they explicitly opt in to `@v2`.
+
+   There's no `--all`: run the steps in order, reading the output between
+   them. `--move-major` in particular force-pushes a tag every `@v1`-style
+   consumer immediately picks up on their next run — deliberately not
+   bundled into anything automatic; this remains repo-owner-only territory
+   (see `scripts/ship.sh` above), a script to remove typos, not a reason to
+   stop paying attention.
+
+Publishing the release (`--publish`, or the GitHub UI) automatically
+triggers `.github/workflows/release-sign.yml`, which generates an SBOM,
+signs it with `cosign` (keyless — no key material to manage; see the
+workflow's own comments), attests SLSA provenance, and attaches all three as
+release assets. Nothing further to do — this is what satisfies OpenSSF
+Scorecard's `Signed-Releases` check. To backfill signing on a release that
+predates this workflow (or to re-run it), trigger it manually:
 `gh workflow run "Sign release artifacts" -f tag=vX.Y.Z`.
-
-Force-pushing a moved tag is a rewrite of published history that every
-`@v1` consumer immediately picks up — this is repo-owner-only territory
-(see `scripts/ship.sh` above), not something to automate away.
 
 ## Pull requests
 
