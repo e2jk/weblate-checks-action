@@ -78,6 +78,73 @@ alerts by `(ruleId, location)` within a `category`, so re-running this on a
 schedule automatically marks previously-flagged strings "Fixed" once they
 stop being flagged, with no extra bookkeeping.
 
+### Optional: skip the scan when nothing changed recently
+
+A nightly run is cheap, but it's still a wasted one if no translation file
+has actually changed since the last scan — Weblate's own findings can't
+have moved either. If your project goes quiet for stretches (a solo
+maintainer, a slow week, commits that never touch translations), you might
+want to gate the scan on recent `.po` activity instead of running it
+unconditionally every night. This is a suggestion to adapt to your own
+project's layout and cadence, not a required setup — the action works
+exactly the same with or without it.
+
+The general shape: add a step before the scan that checks whether a
+translation file changed within a lookback window, and skip the rest of
+the job if not:
+
+```yaml
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # needed to look back over file history
+
+      - name: Check for recent translation changes
+        id: po-check
+        run: |
+          if git log --since="2 days ago" --oneline -- 'path/to/your/translations/**/*.po' | grep -q .; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run Weblate quality checks
+        id: weblate
+        if: steps.po-check.outputs.changed == 'true'
+        uses: e2jk/weblate-checks-action@v1
+        continue-on-error: true
+        with:
+          project: your-weblate-project-slug
+          component: your-weblate-component-slug
+          token: ${{ secrets.WEBLATE_API_TOKEN }}
+
+      - name: Upload results to GitHub Code Scanning
+        if: always() && steps.po-check.outputs.changed == 'true' && hashFiles(steps.weblate.outputs.sarif-file) != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.weblate.outputs.sarif-file }}
+          category: weblate-i18n
+```
+
+A few things worth adapting rather than copying as-is:
+- The `--` pathspec needs to match wherever your `.po` files actually live
+  (the example above assumes a Babel/gettext-style layout — adjust for your
+  own toolchain).
+- The lookback window (`2 days ago` above) is a starting point, not a rule.
+  Pick something with enough slack for your own commit cadence and your
+  scan's schedule — e.g. a translation change landing late in the day,
+  just before a nightly run at a fixed UTC hour.
+- Checking actual file changes (rather than "any commit in the last N
+  days") avoids skipping a scan you did want, and avoids running one just
+  because unrelated commits — a dependency bump, a docs fix — happened to
+  land recently.
+- `fetch-depth: 0` is needed for `git log --since` to see far enough back;
+  the default shallow checkout will silently under-report history.
+
+OpenHangar (this action's original real-world consumer — see "Status"
+above) applies this exact pattern in its own
+[`weblate-i18n-scan.yml`](https://github.com/e2jk/OpenHangar/blob/main/.github/workflows/weblate-i18n-scan.yml),
+if you'd like to see it wired into a complete, working workflow.
+
 ### Which languages get scanned
 
 By default (no `languages` input, as in the example above) the action asks
