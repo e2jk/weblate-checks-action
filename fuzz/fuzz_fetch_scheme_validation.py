@@ -25,7 +25,7 @@ class _NoNetwork(Exception):
     validation and would have made a real request."""
 
 
-def _stub_urlopen(*args, **kwargs):  # noqa: ANN002, ANN003, ANN201
+def _stub_urlopen(*args, **kwargs):
     raise _NoNetwork
 
 

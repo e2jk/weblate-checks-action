@@ -8,7 +8,6 @@ import pytest
 
 import weblate_checks_to_sarif as wcs
 
-
 # ---------------------------------------------------------------------------
 # Small pure helpers
 # ---------------------------------------------------------------------------
@@ -94,44 +93,56 @@ def _http_error(code, headers=None):
 
 
 def test_fetch_rejects_non_http_schemes():
-    with patch("urllib.request.urlopen") as mock_urlopen:
-        with pytest.raises(wcs.ToolError, match="non-http"):
-            wcs._fetch("file:///etc/passwd", None)
+    with (
+        patch("urllib.request.urlopen") as mock_urlopen,
+        pytest.raises(wcs.ToolError, match="non-http"),
+    ):
+        wcs._fetch("file:///etc/passwd", None)
     mock_urlopen.assert_not_called()
 
 
 def test_fetch_raises_rate_limit_exceeded_on_429():
-    with patch("urllib.request.urlopen", side_effect=_http_error(429)):
-        with pytest.raises(wcs.RateLimitExceeded):
-            wcs._fetch("https://example.org/api/units/", None)
+    with (
+        patch("urllib.request.urlopen", side_effect=_http_error(429)),
+        pytest.raises(wcs.RateLimitExceeded),
+    ):
+        wcs._fetch("https://example.org/api/units/", None)
 
 
 def test_fetch_raises_weblate_api_error_on_403():
-    with patch("urllib.request.urlopen", side_effect=_http_error(403)):
-        with pytest.raises(wcs.WeblateApiError, match="rejected"):
-            wcs._fetch("https://example.org/api/units/", "bad-token")
+    with (
+        patch("urllib.request.urlopen", side_effect=_http_error(403)),
+        pytest.raises(wcs.WeblateApiError, match="rejected"),
+    ):
+        wcs._fetch("https://example.org/api/units/", "bad-token")
 
 
 def test_fetch_raises_weblate_api_error_on_connection_failure():
-    with patch(
-        "urllib.request.urlopen",
-        side_effect=urllib.error.URLError("no route to host"),
+    with (
+        patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.URLError("no route to host"),
+        ),
+        pytest.raises(wcs.WeblateApiError, match="Could not reach"),
     ):
-        with pytest.raises(wcs.WeblateApiError, match="Could not reach"):
-            wcs._fetch("https://example.org/api/units/", None)
+        wcs._fetch("https://example.org/api/units/", None)
 
 
 def test_fetch_rate_limit_message_includes_reset_time():
     err = _http_error(429, headers={"X-RateLimit-Reset": "5400"})
-    with patch("urllib.request.urlopen", side_effect=err):
-        with pytest.raises(wcs.RateLimitExceeded, match=r"Resets in ~1h30m"):
-            wcs._fetch("https://example.org/api/units/", None)
+    with (
+        patch("urllib.request.urlopen", side_effect=err),
+        pytest.raises(wcs.RateLimitExceeded, match=r"Resets in ~1h30m"),
+    ):
+        wcs._fetch("https://example.org/api/units/", None)
 
 
 def test_fetch_reraises_unhandled_http_error():
-    with patch("urllib.request.urlopen", side_effect=_http_error(500)):
-        with pytest.raises(urllib.error.HTTPError) as exc_info:
-            wcs._fetch("https://example.org/api/units/", None)
+    with (
+        patch("urllib.request.urlopen", side_effect=_http_error(500)),
+        pytest.raises(urllib.error.HTTPError) as exc_info,
+    ):
+        wcs._fetch("https://example.org/api/units/", None)
     assert exc_info.value.code == 500
 
 
