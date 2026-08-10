@@ -419,8 +419,7 @@ def _write_github_output(pairs: dict[str, str]) -> None:
     if not path:
         return
     with open(path, "a", encoding="utf-8") as fh:
-        for key, value in pairs.items():
-            fh.write(f"{key}={value}\n")
+        fh.writelines(f"{key}={value}\n" for key, value in pairs.items())
 
 
 def main() -> int:
