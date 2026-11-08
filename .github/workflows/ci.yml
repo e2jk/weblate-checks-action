@@ -1,7 +1,22 @@
 name: CI
 
 on:
+  # No push run at all for ship, a bot branch or main — not even a skipped
+  # one: those pushes do no CI work (a push to ship/a bot branch gets a PR,
+  # whose pull_request run is where this actually runs; a push to main lands
+  # content a PR already fully tested — rebase-only merges preserve the
+  # SHA). It must be filtered here, not with a job-level if:, because a job
+  # skipped by its if: still reports its check as passed, under the same
+  # name as the required "Lint, type-check, and test" check, on the very
+  # commit the PR then tests: auto-merge took that as a green light and
+  # merged Dependabot's mypy 2.4.0 bump (#78) before its real run failed,
+  # breaking every PR after it. A run that never starts reports nothing, so
+  # the PR waits for the real check.
   push:
+    branches-ignore:
+      - main
+      - ship
+      - 'dependabot/**'
   pull_request:
 
 permissions: read-all  # zizmor: ignore[excessive-permissions] intentional: workflow default is read-only, every job opts into exactly the write scopes it needs
@@ -13,16 +28,9 @@ concurrency:
 jobs:
   lint-and-test:
     name: Lint, type-check, and test
-    # Skipped only for a push to ship/a bot branch or to main — those pushes
-    # do no CI work at all under the current design: a push to ship just
-    # gets a PR opened (auto-pr-merge.yml) or, for Dependabot, the
-    # platform's own automerge flow, and the pull_request event that
-    # follows is where this actually runs; a push to main lands content a
-    # PR already fully tested, so it'd be a pure no-op re-run of the same
-    # commit (rebase-only merges preserve the SHA). Every other trigger
-    # (any pull_request, a push to some other branch) runs this for real.
-    if: |
-      !(github.event_name == 'push' && (github.ref == 'refs/heads/ship' || startsWith(github.ref, 'refs/heads/dependabot/') || github.ref == 'refs/heads/main'))
+    # Runs on every trigger that reaches this workflow: any pull_request, and
+    # a push to any branch but ship/a bot branch/main (see on: above for why
+    # those are filtered there, not skipped here).
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
