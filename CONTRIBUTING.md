@@ -47,14 +47,14 @@ actually exercise the new/changed behavior, not just execute the lines.
 ### Fuzzing
 
 `fuzz/` has [Atheris](https://github.com/google/atheris) harnesses for the
-functions that handle data from an external/untrusted source (HTML scraped
-from Weblate, the `location` field from its API, a `--weblate-url`/`web_url`
-that could point anywhere, the JSON body of API responses): `scrape_checks`'s
-HTML parsing, `_parse_locations`, `_slugify`, `_fetch`'s URL-scheme
-validation, and `fetch_component_languages`'s/`fetch_flagged_units`'s
-handling of the Weblate API's JSON response (network calls are stubbed out
-in the last three harnesses — they only exercise the scheme guard / the
-response-parsing path, never make a real request). Same technique as
+functions that handle data from an external/untrusted source (the
+`location` field from Weblate's API, a `--weblate-url` that could point
+anywhere, the JSON body of API responses): `_parse_locations`, `_slugify`,
+`_fetch`'s URL-scheme validation, and `fetch_component_languages`'s/
+`fetch_flagged_units`'s/`fetch_unit_checks`'s handling of the Weblate API's
+JSON response (network calls are stubbed out in the last four harnesses —
+they only exercise the scheme guard / the response-parsing path, never make a
+real request). Same technique as
 OpenHangar's `fuzz/`, adapted to this repo's single-module layout.
 
 Atheris is Linux-only (no macOS/Windows wheels), so it's kept out of

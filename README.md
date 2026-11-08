@@ -17,8 +17,11 @@ GitHub repository — the same list where CodeQL and other scanners report.
 ## Why this exists
 
 Weblate's public REST API only exposes a boolean `has_failing_check` per
-translated string — it doesn't say *which* check fired or why; that detail
-only exists on the string's own HTML "translate" page. Nothing on the
+translated string — it doesn't say *which* check fired. Its search can filter
+by check, though (`check:reused`), so this action finds out by searching the
+flagged strings per check name. (It used to read each string's HTML
+"translate" page instead, but Weblate now guards those pages with a
+proof-of-work bot challenge.) Nothing on the
 [GitHub Marketplace](https://github.com/marketplace?type=actions) converts
 that into a Code Scanning–compatible format today; the closest match
 (`WeblateOrg/locale_lint`) is an archived, purely local `.po`-file linter and
@@ -166,17 +169,20 @@ so a language addition there needs no workflow change either.
 ### About the Weblate API token
 
 Anonymous access to Weblate's **REST API** is rate-limited to 100
-requests/day. This action only spends that quota on the initial per-language
-query — one API request per language, or more only if a single language has
-over 100 flagged strings (results are paginated at 100/page). Fetching each
-flagged string's check details afterwards hits its public *translate page*,
-not the API, so those requests don't count against the 100/day quota (the
-`delay` input paces them out as politeness towards the Weblate server, not
-because of any quota). In practice this means the API quota is rarely the
-bottleneck — but it can still be, on a project with many languages, one with
-components that individually have more than 100 flagged strings in a single
-language, or a self-hosted instance with a stricter limit. A token also
-removes any doubt: create one at
+requests/day. Per language, this action makes one request to list the
+flagged strings (more only past 100 of them — results are paginated at
+100/page), then one grouped search for the warning-level checks (see
+`warning-checks` — so a string failing one is never filed under a mere
+note), then one per check it searches: checks are searched most common
+first ("Reused translation", "Multiple failing checks", …) and the search
+stops once every flagged string has a check, so that's usually just a few
+requests per language. A string failing *several* checks then shows under
+its warning-level check if it has one, else the most common one — set `all-checks: true` to search all of Weblate's ~80
+checks instead, finding every check each string fails, at one request per
+check and language: that needs a token. The `delay` input paces the searches
+as politeness towards the Weblate server. A token also removes any doubt
+about the quota (many languages, a self-hosted instance with a stricter
+limit): create one at
 `https://<your-weblate-instance>/accounts/profile/#api` (5000 requests/hour)
 and store it as a repository secret
 (**Settings → Secrets and variables → Actions → New repository secret**),
@@ -194,7 +200,8 @@ lower, anonymous quota.
 | `languages` | no | `''` (auto-discover) | Comma-separated language codes to check, e.g. `en,fr,nl`. Leave empty to auto-discover every language configured for the component from Weblate (includes the source language automatically). See "Which languages get scanned" above. |
 | `token` | no | `''` | Weblate API token. See above. |
 | `output` | no | `weblate-checks.sarif` | Path to write the SARIF file to. |
-| `delay` | no | `0.3` | Seconds to sleep between per-string page fetches (politeness delay). |
+| `delay` | no | `0.3` | Seconds to sleep between Weblate check searches (politeness delay). |
+| `all-checks` | no | `false` | Search every Weblate check instead of stopping once each flagged string has one — finds all the checks a string fails, at one API request per check and language (best with a token). |
 | `warning-checks` | no | format/markup checks (see `action.yml`) | Comma-separated check names that map to SARIF `warning` instead of `note`. |
 | `verbose` | no | `false` | Log each flagged string and its check name(s) as they're fetched. |
 
