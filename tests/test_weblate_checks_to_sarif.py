@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 Emilien Klein
 import json
+import re
 import urllib.error
+import urllib.parse
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -53,32 +55,157 @@ def test_parse_locations(location, expected):
     assert wcs._parse_locations(location) == expected
 
 
-def test_clean_html_text_strips_tags_and_collapses_whitespace():
-    fragment = '<svg>icon</svg>  Reused   translation <span class="x">3</span>'
-    assert wcs._clean_html_text(fragment) == "icon Reused translation 3"
+def _api_page(results, next_url=None):
+    return json.dumps({"results": results, "next": next_url}).encode("utf-8")
 
 
-def test_scrape_checks_parses_things_to_check_panel():
-    page = """
-    <div class="list-group-item check check-item ">
-      <h5>Reused translation</h5>
-      <p class="list-group-item-text check-description">Other source string: "Record"</p>
-    </div>
-    <div class="list-group-item check check-item ">
-      <h5>Unchanged translation</h5>
-    </div>
-    """
-    with patch.object(wcs, "_fetch", return_value=page.encode("utf-8")):
-        checks = wcs.scrape_checks("https://example.org/translate/1", None)
-    assert checks == [
-        ("Reused translation", 'Other source string: "Record"'),
-        ("Unchanged translation", ""),
+def _search_check(url):
+    """The check name a unit search asks for ("check:<name>"), or None."""
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["q"][0]
+    m = re.search(r"check:(\S+)", query)
+    return m.group(1) if m else None
+
+
+def test_fetch_unit_checks_searches_by_check_until_all_are_found():
+    units = [{"id": 1}, {"id": 2}, {"id": 3}]
+    matches = {"reused": [{"id": 1}, {"id": 99}], "same": [{"id": 2}, {"id": 3}]}
+    asked = []
+
+    def fake_fetch(url, _token):
+        check = _search_check(url)
+        asked.append(check)
+        return _api_page(matches.get(check, []))
+
+    with patch.object(wcs, "_fetch", side_effect=fake_fetch), patch("time.sleep"):
+        found = wcs.fetch_unit_checks(
+            "https://example.org", "proj", "comp", "fr", units, None
+        )
+    assert found == {
+        1: ["Reused translation"],
+        2: ["Unchanged translation"],
+        3: ["Unchanged translation"],
+    }
+    # Stopped once every unit had a check: not one request per known check.
+    assert asked == ["reused", "multiple_failures", "inconsistent", "same"]
+
+
+def test_fetch_unit_checks_all_checks_and_unknown():
+    units = [{"id": 1}, {"id": 2}]
+    matches = {
+        "reused": [{"id": 1}],
+        "python_format": [{"id": 1}],
+        "same": ["junk", {"id": [2]}, {"id": {"x": 2}}],  # malformed: ignored
+    }
+
+    def fake_fetch(url, _token):
+        return _api_page(matches.get(_search_check(url), []))
+
+    with patch.object(wcs, "_fetch", side_effect=fake_fetch), patch("time.sleep"):
+        found = wcs.fetch_unit_checks(
+            "https://example.org", "proj", "comp", "fr", units, None, all_checks=True
+        )
+    # Every check searched: both of unit 1's; unit 2 matched none.
+    assert found == {1: ["Reused translation", "Python format"], 2: []}
+
+
+@pytest.mark.parametrize("all_checks", [False, True])
+def test_fetch_unit_checks_nothing_flagged_makes_no_request(all_checks):
+    with patch.object(wcs, "_fetch") as fetch:
+        assert (
+            wcs.fetch_unit_checks(
+                "https://x.org", "p", "c", "fr", [], None, all_checks=all_checks
+            )
+            == {}
+        )
+    fetch.assert_not_called()
+
+
+def _search_filter(url):
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["q"][0]
+    return re.search(r"AND (\(.*\)|check:\S+) AND", query).group(1)
+
+
+def test_fetch_unit_checks_warning_checks_first():
+    # Unit 1 fails both a common note-level check and a warning-level one:
+    # it must be reported under the warning, not just under "reused".
+    units = [{"id": 1}, {"id": 2}]
+    matches = {
+        "check:reused": [{"id": 1}, {"id": 2}],
+        "check:c_format": [{"id": 1}],
+        "(check:python_format OR check:c_format)": [{"id": 1}],
+    }
+    asked = []
+
+    def fake_fetch(url, _token):
+        asked.append(_search_filter(url))
+        return _api_page(matches.get(asked[-1], []))
+
+    with patch.object(wcs, "_fetch", side_effect=fake_fetch), patch("time.sleep"):
+        found = wcs.fetch_unit_checks(
+            "https://example.org",
+            "proj",
+            "comp",
+            "fr",
+            units,
+            None,
+            warning_checks={"Python format", "C format", "Not a Weblate check"},
+        )
+    assert found == {1: ["C format", "Reused translation"], 2: ["Reused translation"]}
+    assert asked == [
+        "(check:python_format OR check:c_format)",
+        "check:python_format",
+        "check:c_format",
+        "check:reused",
     ]
 
 
-def test_scrape_checks_returns_empty_on_fetch_failure():
-    with patch.object(wcs, "_fetch", side_effect=wcs.WeblateApiError("boom")):
-        assert wcs.scrape_checks("https://example.org/translate/1", None) == []
+def test_fetch_unit_checks_no_warning_check_costs_one_request():
+    units = [{"id": 1}]
+
+    def fake_fetch(url, _token):
+        check = _search_filter(url)
+        asked.append(check)
+        return _api_page([{"id": 1}] if check == "check:placeholders" else [])
+
+    asked = []
+    with patch.object(wcs, "_fetch", side_effect=fake_fetch), patch("time.sleep"):
+        found = wcs.fetch_unit_checks(
+            "https://example.org",
+            "proj",
+            "comp",
+            "fr",
+            units,
+            None,
+            warning_checks=set(wcs.DEFAULT_WARNING_CHECKS),
+        )
+    assert found == {1: ["Placeholders"]}
+    # The grouped warning search, then the rest in order — skipping the
+    # warning checks the grouped search already ruled out.
+    rest = [
+        f"check:{cid}"
+        for cid, _ in wcs.CHECKS[
+            : wcs.CHECKS.index(("placeholders", "Placeholders")) + 1
+        ]
+    ]
+    skipped = {
+        f"check:{cid}" for cid, n in wcs.CHECKS if n in wcs.DEFAULT_WARNING_CHECKS
+    }
+    assert asked[0].startswith("(check:")
+    assert asked[1:] == [c for c in rest if c not in skipped]
+
+
+def test_checks_list_and_docs_links():
+    ids = [check_id for check_id, _name in wcs.CHECKS]
+    names = [name for _id, name in wcs.CHECKS]
+    assert len(ids) == len(set(ids)) and len(names) == len(set(names))
+    assert ids[:2] == ["reused", "multiple_failures"]
+    assert wcs.check_docs_url("Python format") == (
+        f"{wcs.WEBLATE_CHECKS_DOCS_URL}#check-python-format"
+    )
+    assert wcs.check_docs_url("Mismatching line breaks").endswith(
+        "#check-newline-count"
+    )
+    assert wcs.check_docs_url(wcs.UNKNOWN_CHECK) == wcs.WEBLATE_CHECKS_DOCS_URL
 
 
 # ---------------------------------------------------------------------------
@@ -112,9 +239,15 @@ def test_fetch_raises_rate_limit_exceeded_on_429():
 def test_fetch_raises_weblate_api_error_on_403():
     with (
         patch("urllib.request.urlopen", side_effect=_http_error(403)),
-        pytest.raises(wcs.WeblateApiError, match="rejected"),
+        pytest.raises(wcs.WeblateApiError, match="token is invalid"),
     ):
         wcs._fetch("https://example.org/api/units/", "bad-token")
+    # No token at all: not blamed on one.
+    with (
+        patch("urllib.request.urlopen", side_effect=_http_error(403)),
+        pytest.raises(wcs.WeblateApiError, match="no token is set"),
+    ):
+        wcs._fetch("https://example.org/api/units/", None)
 
 
 def test_fetch_raises_weblate_api_error_on_connection_failure():
@@ -329,20 +462,19 @@ def test_build_sarif_maps_severity_and_deduplicates_rules():
         "en": [_unit(2, "Hello", "Hi", "")],
     }
     checks_by_unit = {
-        1: [("Reused translation", "Other source string")],
-        2: [("Python format", "Mismatched %(name)s"), ("Reused translation", "")],
+        1: ["Reused translation"],
+        2: ["Python format", "Reused translation"],
     }
 
     def fake_fetch(_weblate_url, _project, _component, language, _token):
         return units_by_lang[language]
 
-    def fake_scrape(translate_url, _token):
-        uid = int(translate_url.rsplit("/", 1)[-1])
-        return checks_by_unit[uid]
+    def fake_unit_checks(_url, _project, _component, _lang, units, *_a, **_k):
+        return {u["id"]: checks_by_unit[u["id"]] for u in units}
 
     with (
         patch.object(wcs, "fetch_flagged_units", side_effect=fake_fetch),
-        patch.object(wcs, "scrape_checks", side_effect=fake_scrape),
+        patch.object(wcs, "fetch_unit_checks", side_effect=fake_unit_checks),
         patch("time.sleep"),
     ):
         sarif, flagged_count = wcs.build_sarif(
@@ -359,6 +491,9 @@ def test_build_sarif_maps_severity_and_deduplicates_rules():
     run = sarif["runs"][0]
     rule_ids = {r["id"] for r in run["tool"]["driver"]["rules"]}
     assert rule_ids == {"reused-translation", "python-format"}
+    # Each rule links to its check's own section of Weblate's docs.
+    help_uris = {r["id"]: r["helpUri"] for r in run["tool"]["driver"]["rules"]}
+    assert help_uris["reused-translation"].endswith("#check-reused")
 
     levels = {r["ruleId"]: r["level"] for r in run["results"]}
     assert levels["python-format"] == "warning"
@@ -381,7 +516,9 @@ def test_build_sarif_verbose_logs_each_string(capsys):
             "fetch_flagged_units",
             return_value=[_unit(1, "Hello world", "Bonjour", "")],
         ),
-        patch.object(wcs, "scrape_checks", return_value=[("Reused translation", "")]),
+        patch.object(
+            wcs, "fetch_unit_checks", return_value={1: ["Reused translation"]}
+        ),
         patch("time.sleep"),
     ):
         wcs.build_sarif(
@@ -399,14 +536,14 @@ def test_build_sarif_verbose_logs_each_string(capsys):
     assert "Reused translation" in captured.err
 
 
-def test_build_sarif_falls_back_to_unknown_check_when_scrape_finds_nothing():
+def test_build_sarif_falls_back_to_unknown_check_when_no_search_matches():
     with (
         patch.object(
             wcs,
             "fetch_flagged_units",
             return_value=[_unit(1, "Hi", "Salut", "")],
         ),
-        patch.object(wcs, "scrape_checks", return_value=[]),
+        patch.object(wcs, "fetch_unit_checks", return_value={1: []}),
         patch("time.sleep"),
     ):
         sarif, flagged_count = wcs.build_sarif(
@@ -415,8 +552,9 @@ def test_build_sarif_falls_back_to_unknown_check_when_scrape_finds_nothing():
 
     assert flagged_count == 1
     [result] = sarif["runs"][0]["results"]
-    assert result["ruleId"] == "unknown-check-could-not-parse-open-link"
+    assert result["ruleId"] == "unknown-check"
     assert result["level"] == "note"
+    assert wcs.UNKNOWN_CHECK_DESC in result["message"]["text"]
 
 
 def test_write_github_output_appends_key_value_pairs(tmp_path, monkeypatch):

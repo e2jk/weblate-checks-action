@@ -5,18 +5,22 @@
 Fetch strings flagged by Weblate quality checks and convert them to SARIF 2.1.0.
 
 Weblate's public REST API only exposes a boolean `has_failing_check` per string —
-it does not say *which* check(s) fired, or why. That detail is only rendered on
-the string's own public translate page ("Things to check" panel). So this tool:
+it does not say *which* check(s) fired. Its search syntax can filter by check,
+though ("check:reused"), so this tool:
 
   1. If --languages is omitted, auto-discovers every language configured for
      the component (via Weblate's own translations list) — otherwise uses the
      given comma-separated list as-is.
   2. Queries the Weblate API for translated strings with a failing check, once
      per language.
-  3. Fetches each flagged string's public translate page and scrapes the
-     "Things to check" panel for the check name(s) and description(s).
+  3. Finds which check(s) fired on each by searching the same strings per check
+     name (CHECKS) — warning-level ones first, then the most common — stopping
+     once every flagged string is accounted for — or through every check with --all-checks. (It used to
+     scrape each string's public translate page instead, but Weblate now
+     guards those with a proof-of-work bot challenge: HTTP 403 "pow_required".)
   4. Emits one SARIF result per (string, check, source location) so GitHub Code
-     Scanning can link every occurrence back to the file/line it came from.
+     Scanning can link every occurrence back to the file/line it came from,
+     each rule linking to its check's section of Weblate's documentation.
 
 No Weblate login is required for a public project, but an API token raises the
 rate limit from 100 anonymous requests/day to 5000/hour — useful for scheduled
@@ -44,7 +48,6 @@ exits 0, since those are informational findings, not a build failure.
 from __future__ import annotations
 
 import argparse
-import html
 import json
 import os
 import re
@@ -53,6 +56,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Collection
 from typing import Any
 
 USER_AGENT = (
@@ -93,17 +97,106 @@ DEFAULT_WARNING_CHECKS = [
 Unit = dict[str, Any]
 Check = tuple[str, str]  # (name, description)
 
-# Matches one "Things to check" list-group-item block on a string's translate page:
-#   <div class="list-group-item check check-item ">
-#     <h5> ...icon svg... Reused translation <span class="check-number">...</span> </h5>
-#     <p class="list-group-item-text check-description">Other source string: "Record"</p>
-CHECK_ITEM_RE = re.compile(
-    r'<div class="list-group-item check check-item\s*">'
-    r"\s*<h5>(?P<name>.*?)</h5>"
-    r'(?:\s*<p class="list-group-item-text check-description">(?P<desc>.*?)</p>)?',
-    re.DOTALL,
+# A flagged string no check search matched — a check newer than CHECKS.
+UNKNOWN_CHECK = "Unknown check"
+UNKNOWN_CHECK_DESC = (
+    "Weblate flags this string with a check this tool doesn't know yet — "
+    "open the Edit link to see it."
 )
-TAG_RE = re.compile(r"<[^>]+>")
+
+# Weblate's quality checks: (search name, display name) — the name Weblate's
+# search syntax filters by ("check:<name>") and the one it shows, from its own
+# definitions (weblate/checks/*.py: check_id, name). The display name is what
+# rule IDs are made from and what --warning-checks matches. Most common first
+# (consistency, format and punctuation checks), so the default search, which
+# stops once every flagged string has a check, rarely needs more than a few
+# requests per language.
+CHECKS: list[tuple[str, str]] = [
+    ("reused", "Reused translation"),
+    ("multiple_failures", "Multiple failing checks"),
+    ("inconsistent", "Inconsistent"),
+    ("same", "Unchanged translation"),
+    ("same-plurals", "Same plurals"),
+    ("translated", "Has been translated"),
+    ("plurals", "Missing plurals"),
+    ("python_format", "Python format"),
+    ("python_brace_format", "Python brace format"),
+    ("c_format", "C format"),
+    ("percent_placeholders", "Percent placeholders"),
+    ("placeholders", "Placeholders"),
+    ("unnamed_format", "Multiple unnamed variables"),
+    ("end_stop", "Mismatched full stop"),
+    ("end_colon", "Mismatched colon"),
+    ("end_question", "Mismatched question mark"),
+    ("end_exclamation", "Mismatched exclamation mark"),
+    ("end_ellipsis", "Mismatched ellipsis"),
+    ("end_semicolon", "Mismatched semicolon"),
+    ("end_space", "Trailing space"),
+    ("begin_space", "Starting spaces"),
+    ("double_space", "Double space"),
+    ("punctuation_spacing", "Punctuation spacing"),
+    ("escaped_newline", "Mismatched \\n"),
+    ("newline-count", "Mismatching line breaks"),
+    ("end_newline", "Trailing newline"),
+    ("begin_newline", "Starting newline"),
+    ("duplicate", "Consecutive duplicated words"),
+    ("xml-tags", "XML markup"),
+    ("xml-invalid", "XML syntax"),
+    ("safe-html", "Unsafe HTML"),
+    ("url", "URL"),
+    ("ai_accuracy", "AI: Accuracy"),
+    ("ai_fluency", "AI: Fluency"),
+    ("ai_terminology", "AI: Terminology"),
+    ("ai_style", "AI: Style"),
+    ("ai_formatting", "AI: Formatting"),
+    ("angularjs_format", "AngularJS interpolation string"),
+    ("accelerator", "Accelerator key"),
+    ("kabyle-characters", "Non-standard characters in Kabyle"),
+    ("end_interrobang", "Mismatched interrobang"),
+    ("zero-width-space", "Zero-width space"),
+    ("max-length", "Maximum length of translation"),
+    ("max-lines", "Maximum number of lines"),
+    ("kashida", "Kashida letter used"),
+    ("multiple_capital", "Multiple capitals"),
+    ("php_format", "PHP format"),
+    ("objc_format", "Objective-C format"),
+    ("perl_brace_format", "Perl brace format"),
+    ("perl_format", "Perl format"),
+    ("javascript_format", "JavaScript format"),
+    ("lua_format", "Lua format"),
+    ("object_pascal_format", "Object Pascal format"),
+    ("scheme_format", "Scheme format"),
+    ("c_sharp_format", "C# format"),
+    ("laravel_format", "Laravel format"),
+    ("java_printf_format", "Java format"),
+    ("java_format", "Java MessageFormat"),
+    ("i18next_interpolation", "i18next interpolation"),
+    ("es_format", "ECMAScript template literals"),
+    ("vue_format", "Vue I18n formatting"),
+    ("automattic_components_format", "Automattic components formatting"),
+    ("check_glossary", "Does not follow glossary"),
+    ("prohibited_initial_character", "Prohibited initial character"),
+    ("icu_message_format_syntax", "ICU MessageFormat syntax"),
+    ("icu_message_format", "ICU MessageFormat"),
+    ("bbcode", "BBCode markup"),
+    ("xml-chars-around-tags", "Chars around XML tags"),
+    ("md-reflink", "Markdown references"),
+    ("md-link", "Markdown links"),
+    ("md-syntax", "Markdown syntax"),
+    ("rst-references", "Inconsistent reStructuredText"),
+    ("rst-syntax", "reStructuredText syntax error"),
+    ("asciidoc-markup", "AsciiDoc markup"),
+    ("safe-mdx", "Safe MDX"),
+    ("regex", "Regular expression"),
+    ("qt_format", "Qt format"),
+    ("qt_plural_format", "Qt plural format"),
+    ("max-size", "Maximum size of translation"),
+    ("ruby_format", "Ruby format"),
+    ("optional_plural", "Unpluralised"),
+    ("ellipsis", "Ellipsis"),
+    ("source-max-length", "Source string length"),
+    ("long_untranslated", "Long untranslated"),
+]
 SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -121,18 +214,19 @@ class RateLimitExceeded(WeblateApiError):
 
 
 def _log(msg: str) -> None:
-    """Progress feedback on stderr — printed unconditionally since fetching
-    checks is one HTTP request per flagged string and can take a while;
-    silence for that long reads as a hang."""
+    """Progress feedback on stderr — printed unconditionally since a run
+    makes several HTTP requests and can take a while; silence for that long
+    reads as a hang."""
     print(msg, file=sys.stderr, flush=True)
 
 
 def _fetch(url: str, token: str | None) -> bytes:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("http", "https"):
-        # Both --weblate-url and unit["web_url"] (echoed back by the Weblate
-        # API) end up here — reject anything but http(s) so a misconfigured
-        # or malicious value can't make urlopen() read a local file:// path.
+        # Both --weblate-url and the pagination "next" links (echoed back by
+        # the Weblate API) end up here — reject anything but http(s) so a
+        # misconfigured or malicious value can't make urlopen() read a local
+        # file:// path.
         raise ToolError(f"Refusing to fetch a non-http(s) URL: {url!r}")
     headers = {"User-Agent": USER_AGENT}
     if token:
@@ -166,10 +260,15 @@ def _fetch(url: str, token: str | None) -> bytes:
                     f"Weblate API rate limit hit (HTTP 429).{reset_note}{token_hint}"
                 ) from exc
             if exc.code in (401, 403):
-                raise WeblateApiError(
-                    f"Weblate rejected the request (HTTP {exc.code}) — token is "
-                    f"invalid or lacks access. Check it at "
+                reason = (
+                    "token is invalid or lacks access. Check it at "
                     f"{weblate_url}/accounts/profile/#api."
+                    if token
+                    else "no token is set — the request needs one, or Weblate "
+                    "refused it (e.g. a bot challenge)."
+                )
+                raise WeblateApiError(
+                    f"Weblate rejected the request (HTTP {exc.code}) — {reason}"
                 ) from exc
             if exc.code == 503 and attempt == 0:
                 time.sleep(5)
@@ -233,6 +332,20 @@ def fetch_flagged_units(
         f"project:{project} AND component:{component} AND language:{language} "
         "AND has:check AND state:>=translated"
     )
+    return _search_units(
+        weblate_url,
+        query,
+        token,
+        f"flagged units for {project}/{component} ({language})",
+    )
+
+
+def _search_units(
+    weblate_url: str, query: str, token: str | None, what: str
+) -> list[Unit]:
+    """Every unit matching a Weblate search *query*, following pagination —
+    capped at MAX_PAGINATION_PAGES, and a malformed or adversarial response
+    turned into a clean WeblateApiError (*what* says what was being listed)."""
     path = "/api/units/?" + urllib.parse.urlencode({"q": query, "page_size": 100})
     units: list[Unit] = []
     url: str | None = weblate_url + path
@@ -242,8 +355,7 @@ def fetch_flagged_units(
         if pages > MAX_PAGINATION_PAGES:
             raise WeblateApiError(
                 f"Exceeded {MAX_PAGINATION_PAGES} pagination pages listing "
-                f"flagged units for {project}/{component} ({language}) — the "
-                'server\'s "next" link never became empty.'
+                f'{what} — the server\'s "next" link never became empty.'
             )
         try:
             data = json.loads(_fetch(url, token))
@@ -256,34 +368,101 @@ def fetch_flagged_units(
             TypeError,
             RecursionError,
         ) as exc:
-            # Same rationale as fetch_component_languages: a malformed or
-            # adversarial response shouldn't crash with a raw traceback.
+            # A malformed/adversarial response (bad JSON, non-UTF-8 bytes, an
+            # unexpected shape, or pathologically deep nesting) shouldn't
+            # crash with a raw traceback.
             raise WeblateApiError(
                 f"Weblate returned an unexpected response from {url}: {exc}"
             ) from exc
     return units
 
 
-def scrape_checks(translate_url: str, token: str | None) -> list[Check]:
-    try:
-        page = _fetch(translate_url, token).decode("utf-8", errors="replace")
-    except (urllib.error.HTTPError, urllib.error.URLError, WeblateApiError):
-        return []
-    checks = []
-    for m in CHECK_ITEM_RE.finditer(page):
-        # Replace tags with a space, not "" — some check blocks (e.g. the
-        # multi-language rollup shown on English source strings) rely on a
-        # tag boundary for the visual gap, and stripping to "" would glue
-        # adjacent words together ("Reused translationFrench, Dutch").
-        name = _clean_html_text(m.group("name"))
-        desc = _clean_html_text(m.group("desc") or "")
-        checks.append((name, desc))
-    return checks
+def fetch_unit_checks(
+    weblate_url: str,
+    project: str,
+    component: str,
+    language: str,
+    units: list[Unit],
+    token: str | None,
+    delay: float = 0.0,
+    all_checks: bool = False,
+    warning_checks: Collection[str] = (),
+) -> dict[Any, list[str]]:
+    """{unit id: [check display names]} for the flagged *units*, found by
+    searching them per check name (CHECKS). Stops once every unit has at
+    least one check — unless *all_checks*, which searches every check (one
+    request per check: best with an API token). A unit no search matched (a
+    check this tool doesn't know yet) gets none — the caller reports it as
+    "Unknown check".
+
+    Without *all_checks*, a unit failing several checks shows under just
+    one, so *warning_checks* (display names) are searched first: otherwise a
+    string failing both a note-level check ("Reused translation") and a
+    warning-level one ("Python format") would be filed under the more common
+    note only. One grouped search ("check:a OR check:b …") finds the units
+    failing any of them — usually none, so it costs a single request — and
+    only if some do are those checks searched one by one."""
+    found: dict[Any, list[str]] = {unit["id"]: [] for unit in units}
+    if not found:
+        return found  # nothing flagged: no search needed, even --all-checks
+
+    def search(check_filter: str, what: str) -> set[Any]:
+        """IDs of our units matching *check_filter*."""
+        query = (
+            f"project:{project} AND component:{component} AND language:{language} "
+            f"AND {check_filter} AND state:>=translated"
+        )
+        matches = _search_units(
+            weblate_url,
+            query,
+            token,
+            f"{what} units for {project}/{component} ({language})",
+        )
+        time.sleep(delay)
+        ids = set()
+        for unit in matches:
+            # Only a plain ID can be one of ours: a malformed response's
+            # (a list, an object…) isn't even hashable.
+            unit_id = unit.get("id") if isinstance(unit, dict) else None
+            if isinstance(unit_id, (int, str)) and unit_id in found:
+                ids.add(unit_id)
+        return ids
+
+    remaining = set(found)
+    searched: set[str] = set()
+    warning_ids = [cid for cid, name in CHECKS if name in warning_checks]
+    if warning_ids and not all_checks:
+        group = "(" + " OR ".join(f"check:{cid}" for cid in warning_ids) + ")"
+        pending = search(group, "warning-level check")
+        searched.update(warning_ids)  # a unit failing one is now in pending
+        for check_id, name in CHECKS:
+            if not pending:
+                break
+            if check_id in warning_ids:
+                matched = search(f"check:{check_id}", check_id)
+                for unit_id in matched:
+                    found[unit_id].append(name)
+                pending -= matched
+                remaining -= matched
+    for check_id, name in CHECKS:
+        if not remaining and not all_checks:
+            break
+        if check_id in searched:
+            continue
+        matched = search(f"check:{check_id}", check_id)
+        for unit_id in matched:
+            found[unit_id].append(name)
+        remaining -= matched
+    return found
 
 
-def _clean_html_text(fragment: str) -> str:
-    text = html.unescape(TAG_RE.sub(" ", fragment))
-    return re.sub(r"\s+", " ", text).strip()
+def check_docs_url(name: str) -> str:
+    """Weblate's documentation for the check displayed as *name* — its own
+    section when it's one of CHECKS, else the checks page."""
+    for check_id, check_name in CHECKS:
+        if check_name == name:
+            return f"{WEBLATE_CHECKS_DOCS_URL}#check-{check_id.replace('_', '-')}"
+    return WEBLATE_CHECKS_DOCS_URL
 
 
 def _slugify(name: str) -> str:
@@ -357,6 +536,7 @@ def build_sarif(
     delay: float,
     warning_checks: set[str],
     verbose: bool = False,
+    all_checks: bool = False,
 ) -> tuple[dict[str, Any], int]:
     rules: dict[str, dict[str, Any]] = {}
     results: list[dict[str, Any]] = []
@@ -366,19 +546,27 @@ def build_sarif(
         _log(f"[{lang}] querying Weblate for flagged strings...")
         units = fetch_flagged_units(weblate_url, project, component, lang, token)
         plural = "" if len(units) == 1 else "s"
-        _log(
-            f"[{lang}] {len(units)} flagged string{plural} — fetching check details..."
+        _log(f"[{lang}] {len(units)} flagged string{plural} — finding their checks...")
+        unit_checks = fetch_unit_checks(
+            weblate_url,
+            project,
+            component,
+            lang,
+            units,
+            token,
+            delay,
+            all_checks=all_checks,
+            warning_checks=warning_checks,
         )
 
         for i, unit in enumerate(units, start=1):
-            checks = scrape_checks(unit["web_url"], token)
-            if not checks:
-                checks = [("Unknown check (could not parse — open link)", "")]
+            checks: list[Check] = [
+                (name, "") for name in unit_checks.get(unit["id"], [])
+            ] or [(UNKNOWN_CHECK, UNKNOWN_CHECK_DESC)]
             if verbose:
                 source_preview = " / ".join(unit["source"])[:60]
                 check_names = ", ".join(name for name, _desc in checks)
                 _log(f"[{lang}] {i}/{len(units)}: {source_preview!r} — {check_names}")
-            time.sleep(delay)
 
             flagged_unit_ids.add(unit["id"])
             for name, desc in checks:
@@ -389,7 +577,7 @@ def build_sarif(
                         "name": re.sub(r"[^A-Za-z0-9]", "", name.title())
                         or "UnknownCheck",
                         "shortDescription": {"text": name},
-                        "helpUri": WEBLATE_CHECKS_DOCS_URL,
+                        "helpUri": check_docs_url(name),
                         "properties": {"tags": ["i18n", "translation"]},
                     }
                 level = "warning" if name in warning_checks else "note"
@@ -456,7 +644,14 @@ def main() -> int:
         "--delay",
         type=float,
         default=0.3,
-        help="Seconds to sleep between per-string page fetches (default: %(default)s)",
+        help="Seconds to sleep between Weblate check searches (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--all-checks",
+        action="store_true",
+        help="Search every Weblate check, not just until each flagged string has "
+        "one — finds all the checks a string fails, at one API request per "
+        "check and language (best with an API token)",
     )
     parser.add_argument(
         "--warning-checks",
@@ -506,6 +701,7 @@ def main() -> int:
             args.delay,
             warning_checks,
             verbose=args.verbose,
+            all_checks=args.all_checks,
         )
     except ToolError as exc:
         print(f"Error: {exc}", file=sys.stderr)

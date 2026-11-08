@@ -30,13 +30,13 @@ This project is a single Python script (`weblate_checks_to_sarif.py`) that
 runs as a step in consumers' GitHub Actions workflows. In scope:
 
 - Anything that lets a malicious/misconfigured `--weblate-url`, or a
-  `web_url` echoed back by the Weblate API, be fetched outside http(s) or
+  pagination `next` link echoed back by the Weblate API, be fetched outside http(s) or
   reach an unintended host (see `_fetch`'s scheme validation) —
   SSRF-adjacent issues.
 - Handling of the Weblate API token (`--token` / `WEBLATE_API_TOKEN`) —
   leakage into logs, the generated SARIF file, or Action outputs.
-- Issues in the HTML scraping (`scrape_checks`, `CHECK_ITEM_RE`) or SARIF
-  assembly that could corrupt or exploit a downstream SARIF consumer (e.g.
+- Issues in the handling of Weblate's API responses (`_search_units`,
+  `fetch_unit_checks`) or SARIF assembly that could corrupt or exploit a downstream SARIF consumer (e.g.
   GitHub Code Scanning).
 - Supply-chain issues in this repo's own GitHub Actions workflows
   (`.github/workflows/`, `action.yml`).

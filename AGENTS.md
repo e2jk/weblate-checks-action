@@ -44,9 +44,11 @@ a change.
 ## Architecture / data flow
 
 The core problem this tool solves: Weblate's REST API only exposes a boolean
-`has_failing_check` per string — it never says *which* check fired or why.
-That detail is only rendered in HTML on the string's own public "translate"
-page. So the script combines an API-driven crawl with HTML scraping:
+`has_failing_check` per string — it never says *which* check fired. Its
+search syntax can filter by check, though (`check:<name>`), so the script
+finds that out with more API searches (it used to scrape each string's HTML
+"translate" page, but Weblate now guards those with a proof-of-work bot
+challenge — HTTP 403 `pow_required`):
 
 1. **Language discovery** (`fetch_component_languages`) — if `--languages` is
    omitted, queries Weblate's translations list for the component to get
@@ -56,12 +58,19 @@ page. So the script combines an API-driven crawl with HTML scraping:
    itself).
 2. **Flagged-unit query** (`fetch_flagged_units`) — one paginated REST API
    call per language: `has:check AND state:>=translated`.
-3. **Check scraping** (`scrape_checks` + `CHECK_ITEM_RE`) — for each flagged
-   unit, fetches its public `web_url` translate page (not the API — doesn't
-   count against API quota) and regex-parses the "Things to check"
-   `list-group-item` blocks for check name + description. A failed/unparsable
-   fetch degrades to an empty list, not an exception — the caller then emits
-   a placeholder "Unknown check" result rather than dropping the string.
+3. **Check lookup** (`fetch_unit_checks`) — searches the language's units
+   per check name in `CHECKS` (Weblate's `check_id`/display name pairs,
+   copied from its `weblate/checks/*.py`, most common first), recording each
+   flagged unit's display name(s), and stops once every flagged unit has one
+   — unless `--all-checks`, which searches them all. The warning-level
+   checks (`--warning-checks`) go first, through one grouped
+   `(check:a OR check:b …)` search (then per check only if it matched), so
+   the early stop never files a string with a warning-level check under a
+   more common note-level one. Shares pagination, the
+   page cap and malformed-response handling with `fetch_flagged_units`
+   (`_search_units`). A flagged unit no search matched (a check newer than
+   `CHECKS`) gets a placeholder "Unknown check" result rather than being
+   dropped; the fix is adding the check to `CHECKS`.
 4. **SARIF assembly** (`build_sarif` / `_sarif_result`) — one SARIF result per
    (unit, check, location) tuple; `unit["location"]` (comma-separated
    `file:line` entries) is parsed by `_parse_locations` into SARIF
@@ -86,13 +95,13 @@ policy decision, not an oversight, and is user-overridable via
 rate limit, network error) and are caught in `main()` to print a clean
 message and exit 1. A run that successfully completes and finds flagged
 strings still exits 0 — those are informational findings, not a build
-failure. Don't let a transport-level scrape failure (`scrape_checks`) bubble
-up as a `ToolError`; it's expected to degrade gracefully per-unit instead.
+failure. A malformed API response, though, is a `WeblateApiError` — check
+searches included.
 
-**`_fetch` is the sole network chokepoint** — both the Weblate API and the
-scraped translate pages go through it. It validates the URL scheme is
+**`_fetch` is the sole network chokepoint** — every Weblate API request
+goes through it. It validates the URL scheme is
 http(s) before every request (defense against a malicious/misconfigured
-`--weblate-url` or an API-echoed `web_url` reaching `file://`), and handles
+`--weblate-url` or an API-echoed pagination link reaching `file://`), and handles
 429 (rate limit, no point retrying same-run), 401/403 (bad/missing token),
 and 503 (single retry after a short sleep) distinctly.
 
