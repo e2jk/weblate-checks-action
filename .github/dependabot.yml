@@ -21,3 +21,19 @@ updates:
       day: monday
     cooldown:
       default-days: 14
+    groups:
+      # One PR for every currently-advised fix (security updates skip the
+      # cooldown). CI's pip-audit checks the whole dependency tree, not just
+      # the diff, so one PR per vulnerable package left each PR failing on
+      # whichever other advisory hadn't landed yet — the same fix as
+      # OpenHangar's Renovate "security patches" group.
+      security-patches:
+        applies-to: security-updates
+        patterns: ["*"]
+      # One weekly PR for all version bumps: tools here pin each other's
+      # dependencies (mypy 2.4.0 needed librt and ast-serialize bumps it
+      # didn't bring along), so separate PRs could each fail alone while
+      # the set together resolves.
+      dev-dependencies:
+        applies-to: version-updates
+        patterns: ["*"]
