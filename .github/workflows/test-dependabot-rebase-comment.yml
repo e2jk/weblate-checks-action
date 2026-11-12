@@ -1,0 +1,36 @@
+name: Test Dependabot rebase comment
+
+# Temporary experiment: does Dependabot act on an "@dependabot rebase"
+# comment posted by github-actions[bot] (GITHUB_TOKEN), or only on one from
+# a human with write access? The answer decides how an auto-rebase workflow
+# for stale Dependabot PRs (ported from OpenHangar) can trigger a rebase.
+# Run with: gh workflow run test-dependabot-rebase-comment.yml -f pr=<number>
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Dependabot PR number to ask for a rebase
+        required: true
+        type: number
+
+permissions: read-all  # zizmor: ignore[excessive-permissions] intentional: workflow default is read-only, the job below opts into exactly the write scope it needs
+
+concurrency:
+  group: test-dependabot-rebase-comment
+  cancel-in-progress: false
+
+jobs:
+  comment:
+    name: Post "@dependabot rebase" as github-actions[bot]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write  # gh pr comment
+    steps:
+      - name: Comment on the PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+        run: gh pr comment "$PR" --body "@dependabot rebase"
