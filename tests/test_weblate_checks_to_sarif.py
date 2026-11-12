@@ -609,6 +609,25 @@ def test_build_sarif_leaves_out_results_with_nowhere_to_point(capsys):
     assert "https://example.org/translate/1" in out
 
 
+def test_build_sarif_escapes_annotation_message(capsys):
+    """Source text is translator-editable: a newline in it must not end the
+    ::warning:: command and let the rest run as a workflow command."""
+    units = [_unit(1, "50%\n::stop-commands::x", "t", "")]
+    with (
+        patch.object(wcs, "fetch_flagged_units", return_value=units),
+        patch.object(
+            wcs, "fetch_unit_checks", return_value={1: ["Reused translation"]}
+        ),
+        patch.object(wcs, "fetch_translation_filename", return_value=""),
+        patch("time.sleep"),
+    ):
+        wcs.build_sarif("https://example.org", "proj", "comp", ["en"], None, 0.0, set())
+
+    out = capsys.readouterr().out
+    assert out.count("\n") == 1  # just print()'s own trailing newline
+    assert '"50%25%0A::stop-commands::x" fails' in out
+
+
 def test_build_sarif_skips_translation_file_lookup_when_all_units_located():
     with (
         patch.object(

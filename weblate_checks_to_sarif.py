@@ -505,6 +505,15 @@ def _slugify(name: str) -> str:
     return slug or "unknown-check"
 
 
+def _escape_command_data(text: str) -> str:
+    """Escape *text* for the message part of a GitHub workflow command
+    (``::warning::<message>``). Unescaped, a newline in it — e.g. from a
+    multi-line source string — would end the command early and leave the
+    rest on its own line, where the runner would read a leading "::" as a
+    new workflow command."""
+    return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
 def _parse_locations(location_field: str) -> list[tuple[str, int | None]]:
     """Weblate's `location` field is a comma-separated "file:line" list (or
     empty). Returns [] if nothing usable was found — the caller then falls
@@ -643,10 +652,13 @@ def build_sarif(
                     # single result without a location, so leave this one
                     # out — loudly, as a workflow annotation, not silently.
                     print(
-                        f"::warning title=Weblate finding not uploaded::[{lang}] "
-                        f'"{" / ".join(unit["source"])[:60]}" fails "{name}", but '
-                        "Weblate has no source location or translation file for "
-                        f"it to point at. See {unit['web_url']}"
+                        "::warning title=Weblate finding not uploaded::"
+                        + _escape_command_data(
+                            f"[{lang}] "
+                            f'"{" / ".join(unit["source"])[:60]}" fails "{name}", '
+                            "but Weblate has no source location or translation "
+                            f"file for it to point at. See {unit['web_url']}"
+                        )
                     )
                     continue
                 results.append(result)
