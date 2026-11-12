@@ -1,0 +1,77 @@
+name: Auto-rebase stale bot PRs
+
+# Race condition: the main ruleset requires branches to be up to date before
+# merging, so whenever any PR merges, every other open PR falls behind and
+# can no longer merge even though its own checks passed — it needs a rebase
+# and a fresh check run. Dependabot only rebases on its own when a PR has a
+# conflict, not when it's merely behind, so a Dependabot PR would otherwise
+# sit there with auto-merge enabled until someone comments
+# "@dependabot rebase" by hand (as PR #91 did). This workflow posts that
+# comment automatically, for Dependabot PRs only — never a human's PR, which
+# may be failing for reasons unrelated to staleness. Ported from OpenHangar;
+# see .github/scripts/auto-rebase-stale-bot-prs.sh for the details (why the
+# comment is posted with a PAT rather than GITHUB_TOKEN, attempt cap, one
+# PR per run).
+#
+# Triggers:
+# - push to main: a ship/ PR merging (auto-merge enabled with the
+#   PAT_AUTO_PR_MERGE PAT, so its push triggers workflows) makes open
+#   Dependabot PRs stale right then.
+# - hourly cron: a Dependabot PR merging makes the *other* open Dependabot
+#   PRs stale too, but dependabot-automerge.yml enables its auto-merge with
+#   GITHUB_TOKEN, and a push GITHUB_TOKEN causes never triggers workflows
+#   (verified: the merge of #95 started no push runs), so only the cron
+#   catches that case. Hourly rather than OpenHangar's 6h since it's the
+#   primary path for it here, and a run with nothing stale is a few
+#   read-only API calls.
+#
+# Add the `no-auto-rebase` label to a PR to skip it entirely (e.g. a bump
+# blocked on another package's release). Remove it once that's resolved.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch: {}
+
+permissions: read-all  # zizmor: ignore[excessive-permissions] intentional: workflow default is read-only, the job below opts into exactly the write scope it needs
+
+concurrency:
+  group: auto-rebase-stale-bot-prs
+  cancel-in-progress: false
+
+jobs:
+  rebase:
+    name: Ask Dependabot to rebase stale PRs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read  # actions/checkout, to fetch the script file
+      issues: write   # gh label create (labels are an Issues-API resource)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Ensure the `no-auto-rebase` label exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create no-auto-rebase \
+            --color d93f0b \
+            --description "Blocked on something external (e.g. an upstream release) -- don't auto-rebase" \
+            2>/dev/null || true
+
+      - name: Ask Dependabot to rebase stale PRs (bounded retries)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Dependabot ignores commands from github-actions[bot] ("only users
+          # with push access can use that command"), so the comment itself is
+          # posted with the repo owner's PAT — the same one auto-pr-merge.yml
+          # uses (Pull requests: read/write is enough to comment).
+          GH_COMMENT_TOKEN: ${{ secrets.PAT_AUTO_PR_MERGE }}
+          GH_REPO: ${{ github.repository }}
+          MAX_ATTEMPTS: "3"
+        run: bash .github/scripts/auto-rebase-stale-bot-prs.sh
