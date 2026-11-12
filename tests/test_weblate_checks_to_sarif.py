@@ -475,6 +475,9 @@ def test_build_sarif_maps_severity_and_deduplicates_rules():
     with (
         patch.object(wcs, "fetch_flagged_units", side_effect=fake_fetch),
         patch.object(wcs, "fetch_unit_checks", side_effect=fake_unit_checks),
+        patch.object(
+            wcs, "fetch_translation_filename", return_value="locale/en.po"
+        ) as mock_filename,
         patch("time.sleep"),
     ):
         sarif, flagged_count = wcs.build_sarif(
@@ -500,13 +503,24 @@ def test_build_sarif_maps_severity_and_deduplicates_rules():
     assert levels["reused-translation"] == "note"
 
     # The fr unit has a parseable location; the en unit's empty location
-    # field must not fabricate a fake one.
+    # field falls back to the en translation file — looked up once for both
+    # of its results, and never for fr, whose unit has a location of its own.
     fr_result = next(r for r in run["results"] if "Bonjour" in r["message"]["text"])
     assert fr_result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] == (
         "app/templates/a.html"
     )
+    assert "no source location" not in fr_result["message"]["text"]
     en_results = [r for r in run["results"] if '"Hi"' in r["message"]["text"]]
-    assert all("locations" not in r for r in en_results)
+    assert len(en_results) == 2
+    for r in en_results:
+        [location] = r["locations"]
+        assert location["physicalLocation"] == {
+            "artifactLocation": {"uri": "locale/en.po", "uriBaseId": "%SRCROOT%"}
+        }
+        assert "no source location" in r["message"]["text"]
+    mock_filename.assert_called_once_with(
+        "https://example.org", "proj", "comp", "en", None
+    )
 
 
 def test_build_sarif_verbose_logs_each_string(capsys):
@@ -519,6 +533,7 @@ def test_build_sarif_verbose_logs_each_string(capsys):
         patch.object(
             wcs, "fetch_unit_checks", return_value={1: ["Reused translation"]}
         ),
+        patch.object(wcs, "fetch_translation_filename", return_value="x.po"),
         patch("time.sleep"),
     ):
         wcs.build_sarif(
@@ -544,6 +559,7 @@ def test_build_sarif_falls_back_to_unknown_check_when_no_search_matches():
             return_value=[_unit(1, "Hi", "Salut", "")],
         ),
         patch.object(wcs, "fetch_unit_checks", return_value={1: []}),
+        patch.object(wcs, "fetch_translation_filename", return_value="x.po"),
         patch("time.sleep"),
     ):
         sarif, flagged_count = wcs.build_sarif(
@@ -555,6 +571,116 @@ def test_build_sarif_falls_back_to_unknown_check_when_no_search_matches():
     assert result["ruleId"] == "unknown-check"
     assert result["level"] == "note"
     assert wcs.UNKNOWN_CHECK_DESC in result["message"]["text"]
+
+
+def test_build_sarif_leaves_out_results_with_nowhere_to_point(capsys):
+    """No source location and no translation file (the source language of a
+    gettext component): GitHub would reject the whole upload over that one
+    result, so it's left out, with a workflow annotation saying so."""
+    units = [
+        _unit(1, "Replace", "Replace", ""),
+        _unit(2, "Hello", "Hello", "app/a.html:3"),
+    ]
+    with (
+        patch.object(wcs, "fetch_flagged_units", return_value=units),
+        patch.object(
+            wcs,
+            "fetch_unit_checks",
+            return_value={1: ["Reused translation"], 2: ["Reused translation"]},
+        ),
+        patch.object(
+            wcs, "fetch_translation_filename", return_value=""
+        ) as mock_filename,
+        patch("time.sleep"),
+    ):
+        sarif, flagged_count = wcs.build_sarif(
+            "https://example.org", "proj", "comp", ["en"], None, 0.0, set()
+        )
+
+    assert flagged_count == 2
+    [result] = sarif["runs"][0]["results"]
+    assert result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] == (
+        "app/a.html"
+    )
+    mock_filename.assert_called_once()
+    out = capsys.readouterr().out
+    assert out.startswith("::warning title=Weblate finding not uploaded::[en] ")
+    assert '"Replace" fails "Reused translation"' in out
+    assert "https://example.org/translate/1" in out
+
+
+def test_build_sarif_skips_translation_file_lookup_when_all_units_located():
+    with (
+        patch.object(
+            wcs,
+            "fetch_flagged_units",
+            return_value=[_unit(1, "Hi", "Salut", "app/a.html:1")],
+        ),
+        patch.object(
+            wcs, "fetch_unit_checks", return_value={1: ["Reused translation"]}
+        ),
+        patch.object(wcs, "fetch_translation_filename") as mock_filename,
+        patch("time.sleep"),
+    ):
+        wcs.build_sarif("https://example.org", "proj", "comp", ["fr"], None, 0.0, set())
+    mock_filename.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "body,expected",
+    [
+        (
+            {"filename": "locale/fr/LC_MESSAGES/messages.po"},
+            "locale/fr/LC_MESSAGES/messages.po",
+        ),
+        ({"filename": ""}, ""),
+        ({"filename": None}, ""),
+        ({}, ""),
+    ],
+)
+def test_fetch_translation_filename(body, expected):
+    with patch.object(
+        wcs, "_fetch", return_value=json.dumps(body).encode()
+    ) as mock_fetch:
+        assert (
+            wcs.fetch_translation_filename(
+                "https://example.org", "proj", "comp", "pt_BR", "tok"
+            )
+            == expected
+        )
+    mock_fetch.assert_called_once_with(
+        "https://example.org/api/translations/proj/comp/pt_BR/", "tok"
+    )
+
+
+def test_fetch_translation_filename_quotes_path_segments():
+    with patch.object(wcs, "_fetch", return_value=b"{}") as mock_fetch:
+        wcs.fetch_translation_filename("https://example.org", "a/b", "c?d", "e#f", None)
+    assert mock_fetch.call_args.args[0] == (
+        "https://example.org/api/translations/a%2Fb/c%3Fd/e%23f/"
+    )
+
+
+@pytest.mark.parametrize(
+    "bad_response",
+    [
+        b"not json",
+        b"\xff\xfe",
+        b"[]",
+        b'{"filename": 42}',
+        b"[" * 100_000 + b"]" * 100_000,
+    ],
+)
+def test_fetch_translation_filename_raises_clean_error_on_malformed_response(
+    bad_response,
+):
+    with (
+        patch.object(wcs, "_fetch", return_value=bad_response),
+        pytest.raises(wcs.WeblateApiError, match="unexpected response"),
+    ):
+        wcs.fetch_translation_filename(
+            "https://example.org", "proj", "comp", "fr", None
+        )
 
 
 def test_write_github_output_appends_key_value_pairs(tmp_path, monkeypatch):
