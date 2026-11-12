@@ -74,7 +74,14 @@ challenge — HTTP 403 `pow_required`):
 4. **SARIF assembly** (`build_sarif` / `_sarif_result`) — one SARIF result per
    (unit, check, location) tuple; `unit["location"]` (comma-separated
    `file:line` entries) is parsed by `_parse_locations` into SARIF
-   `physicalLocation`s, omitted entirely if empty rather than fabricated.
+   `physicalLocation`s. GitHub Code Scanning rejects the *whole* upload if a
+   single result has no location, so a unit without one (typically a `.po`
+   entry added by hand, without its `#:` reference comment) is attached to
+   its language's translation file instead (`fetch_translation_filename`, at
+   most one lazy API call per language, no line number). If Weblate has no
+   file for that language either (the source language of a bilingual
+   component), the result is left out and a `::warning::` workflow
+   annotation names it. Never invent a path.
    Rule IDs are slugified check names (`_slugify`); rule metadata is
    deduplicated into a `rules` dict keyed by slug as results accumulate.
 

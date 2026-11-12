@@ -21,6 +21,12 @@ though ("check:reused"), so this tool:
   4. Emits one SARIF result per (string, check, source location) so GitHub Code
      Scanning can link every occurrence back to the file/line it came from,
      each rule linking to its check's section of Weblate's documentation.
+     Code Scanning rejects the whole upload if any result has no location, so
+     a string Weblate has no source location for (e.g. a .po entry added by
+     hand, without its "#:" reference comment) is attached to the language's
+     translation file instead; if Weblate has no file for that language
+     either (the source language of a bilingual component), the result is
+     left out with a warning annotation rather than given a made-up path.
 
 No Weblate login is required for a public project, but an API token raises the
 rate limit from 100 anonymous requests/day to 5000/hour — useful for scheduled
@@ -325,6 +331,35 @@ def fetch_component_languages(
     return codes
 
 
+def fetch_translation_filename(
+    weblate_url: str, project: str, component: str, language: str, token: str | None
+) -> str:
+    """The repository path of *language*'s translation file, as Weblate knows
+    it (e.g. "locale/fr/LC_MESSAGES/messages.po"), or "" when it has none —
+    the source language of a bilingual (e.g. gettext) component."""
+    url = (
+        f"{weblate_url}/api/translations/"
+        f"{urllib.parse.quote(project, safe='')}/"
+        f"{urllib.parse.quote(component, safe='')}/"
+        f"{urllib.parse.quote(language, safe='')}/"
+    )
+    try:
+        filename = json.loads(_fetch(url, token)).get("filename") or ""
+        if not isinstance(filename, str):
+            raise TypeError(f"filename is {type(filename).__name__}, not str")
+    except (
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+        AttributeError,
+        TypeError,
+        RecursionError,
+    ) as exc:
+        raise WeblateApiError(
+            f"Weblate returned an unexpected response from {url}: {exc}"
+        ) from exc
+    return filename
+
+
 def fetch_flagged_units(
     weblate_url: str, project: str, component: str, language: str, token: str | None
 ) -> list[Unit]:
@@ -472,8 +507,8 @@ def _slugify(name: str) -> str:
 
 def _parse_locations(location_field: str) -> list[tuple[str, int | None]]:
     """Weblate's `location` field is a comma-separated "file:line" list (or
-    empty). Returns [] if nothing usable was found — the caller then emits a
-    SARIF result with no physicalLocation rather than a fabricated one."""
+    empty). Returns [] if nothing usable was found — the caller then falls
+    back to the translation file rather than a fabricated location."""
     if not location_field:
         return []
     locations: list[tuple[str, int | None]] = []
@@ -499,12 +534,24 @@ def _sarif_result(
     check_name: str,
     check_desc: str,
     level: str,
+    fallback_uri: str = "",
 ) -> dict[str, Any]:
+    """One SARIF result for *unit* failing *check_name*. Located at the
+    unit's own source location(s); when Weblate has none, at *fallback_uri*
+    (the language's translation file) instead — and with neither, the result
+    has no "locations", which the caller must not upload as-is."""
     source = " / ".join(unit["source"])
     target = " / ".join(unit["target"])
     text = f'[{lang}] Source: "{source}"\nTarget: "{target}"'
     if check_desc:
         text += f"\n{check_desc}"
+    parsed = _parse_locations(unit.get("location", ""))
+    if not parsed and fallback_uri:
+        text += (
+            "\nWeblate has no source location for this string, so it is shown "
+            "on the translation file."
+        )
+        parsed = [(fallback_uri, None)]
     text += f"\nEdit: {unit['web_url']}"
 
     result: dict[str, Any] = {
@@ -520,7 +567,7 @@ def _sarif_result(
                 **({"region": {"startLine": line}} if line else {}),
             }
         }
-        for uri, line in _parse_locations(unit.get("location", ""))
+        for uri, line in parsed
     ]
     if locations:
         result["locations"] = locations
@@ -559,6 +606,9 @@ def build_sarif(
             warning_checks=warning_checks,
         )
 
+        # Fetched at most once per language, and only if a unit needs it.
+        fallback_uri: str | None = None
+
         for i, unit in enumerate(units, start=1):
             checks: list[Check] = [
                 (name, "") for name in unit_checks.get(unit["id"], [])
@@ -569,6 +619,10 @@ def build_sarif(
                 _log(f"[{lang}] {i}/{len(units)}: {source_preview!r} — {check_names}")
 
             flagged_unit_ids.add(unit["id"])
+            if fallback_uri is None and not _parse_locations(unit.get("location", "")):
+                fallback_uri = fetch_translation_filename(
+                    weblate_url, project, component, lang, token
+                )
             for name, desc in checks:
                 slug = _slugify(name)
                 if slug not in rules:
@@ -581,7 +635,21 @@ def build_sarif(
                         "properties": {"tags": ["i18n", "translation"]},
                     }
                 level = "warning" if name in warning_checks else "note"
-                results.append(_sarif_result(lang, unit, name, desc, level))
+                result = _sarif_result(
+                    lang, unit, name, desc, level, fallback_uri or ""
+                )
+                if "locations" not in result:
+                    # GitHub Code Scanning rejects the whole upload over a
+                    # single result without a location, so leave this one
+                    # out — loudly, as a workflow annotation, not silently.
+                    print(
+                        f"::warning title=Weblate finding not uploaded::[{lang}] "
+                        f'"{" / ".join(unit["source"])[:60]}" fails "{name}", but '
+                        "Weblate has no source location or translation file for "
+                        f"it to point at. See {unit['web_url']}"
+                    )
+                    continue
+                results.append(result)
 
     sarif = {
         "version": "2.1.0",
