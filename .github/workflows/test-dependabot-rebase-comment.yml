@@ -4,6 +4,12 @@ name: Test Dependabot rebase comment
 # comment posted by github-actions[bot] (GITHUB_TOKEN), or only on one from
 # a human with write access? The answer decides how an auto-rebase workflow
 # for stale Dependabot PRs (ported from OpenHangar) can trigger a rebase.
+#
+# Round 1 (GITHUB_TOKEN) answered "no": Dependabot replied "Sorry, only users
+# with push access can use that command." Round 2 posts with the
+# PAT_AUTO_PR_MERGE fine-grained PAT instead, so the comment comes from the
+# repo owner's account — testing both that Dependabot accepts it and that
+# the PAT's "Pull requests: read/write" scope can post PR comments.
 # Run with: gh workflow run test-dependabot-rebase-comment.yml -f pr=<number>
 
 on:
@@ -14,7 +20,7 @@ on:
         required: true
         type: number
 
-permissions: read-all  # zizmor: ignore[excessive-permissions] intentional: workflow default is read-only, the job below opts into exactly the write scope it needs
+permissions: read-all  # zizmor: ignore[excessive-permissions] intentional: workflow default is read-only; the job itself needs no GITHUB_TOKEN scopes
 
 concurrency:
   group: test-dependabot-rebase-comment
@@ -22,15 +28,14 @@ concurrency:
 
 jobs:
   comment:
-    name: Post "@dependabot rebase" as github-actions[bot]
+    name: Post "@dependabot rebase" with the PAT
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      pull-requests: write  # gh pr comment
+    permissions: {}  # the comment uses the PAT below, not GITHUB_TOKEN
     steps:
       - name: Comment on the PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_AUTO_PR_MERGE }}
           GH_REPO: ${{ github.repository }}
           PR: ${{ inputs.pr }}
         run: gh pr comment "$PR" --body "@dependabot rebase"
