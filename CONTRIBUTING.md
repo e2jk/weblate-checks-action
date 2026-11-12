@@ -122,6 +122,15 @@ reaches `main`, and they're deliberately asymmetric:
   `pull_request:` trigger already covers it. These get an actual human
   review; merge with "Rebase and merge" once satisfied, rather than turning
   on auto-merge.
+- **Dependabot PRs**: `.github/workflows/dependabot-automerge.yml` enables
+  auto-merge on them, and they land once CI passes. Because `main` requires
+  branches to be up to date, a Dependabot PR that falls behind after another
+  merge can't land until it's rebased, and Dependabot only rebases on its own
+  for conflicts. `.github/workflows/auto-rebase-stale-bot-prs.yml` handles
+  that: on every push to `main` and hourly, it posts `@dependabot rebase` on
+  one stale Dependabot PR, at most 3 times per PR. The comment goes out under
+  `PAT_AUTO_PR_MERGE` because Dependabot ignores commands from
+  `github-actions[bot]`. Label a PR `no-auto-rebase` to exclude it.
 
 This asymmetry is intentional and known to keep Scorecard's `Code-Review`
 check at 0 for solo commits (same as OpenHangar) — full auto-merge on your
